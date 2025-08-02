@@ -29,7 +29,7 @@ class Settings(BaseSettings):
         raise ValueError(v)
     
     # Firebase Configuration
-    FIREBASE_CREDENTIALS_FILE: Optional[str] = None
+    FIREBASE_CREDENTIALS_FILE: str = "app/config/home-vision-ai-firebase-adminsdk-fbsvc-0ac8a1f589.json"
     FIREBASE_PROJECT_ID: Optional[str] = None
     
     # Camera Configuration
