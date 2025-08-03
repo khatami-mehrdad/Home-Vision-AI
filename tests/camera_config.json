@@ -1,6 +1,3 @@
 {
-  "Front Door": "rtsp://192.168.1.100:554/stream1",
-  "Back Yard": "rtsp://192.168.1.101:554/stream1",
-  "Garage": "rtsp://192.168.1.102:554/stream1",
-  "Living Room": "rtsp://192.168.1.103:554/stream1"
+  "My Camera": "rtsp://mehrdad:hafez21@192.168.1.32:554/stream2"
 } 
