@@ -1,119 +1,130 @@
-# Home-Vision-AI Test Suite
+# RTSP Camera Test Script
 
-This directory contains comprehensive tests for the Home-Vision-AI system to verify that all components are working correctly.
+A comprehensive tool for testing RTSP camera connectivity and displaying video feeds. Supports both local and remote SSH environments with video creation capabilities.
 
-## Test Components
+## Features
 
-### 🔍 **RTSP Camera Test** (`rtsp_test.py`)
-Tests RTSP camera connectivity and displays video feeds.
-
-**Features:**
-- Test single camera connection
+- Test single or multiple RTSP camera connections
 - Display live camera feeds
-- Test multiple cameras simultaneously
-- Interactive mode for manual testing
+- Headless mode for remote SSH sessions
+- Save frames to files for analysis
+- **Create videos from saved frames**
+- Interactive mode for easy testing
+- Support for camera configuration files
 
-**Usage:**
+## Usage
+
+### Basic Testing
+
 ```bash
-# Test single camera
+# Test a single camera connection
 python tests/rtsp_test.py --url "rtsp://192.168.1.100:554/stream1" --name "Front Door"
-
-# Display camera feed
-python tests/rtsp_test.py --url "rtsp://192.168.1.100:554/stream1" --display --duration 30
 
 # Test multiple cameras from config file
 python tests/rtsp_test.py --config tests/camera_config.json
-
-# Interactive mode
-python tests/rtsp_test.py
 ```
 
-### 🔥 **Firebase Test** (`firebase_test.py`)
-Tests Firebase Cloud Messaging connectivity and notification sending.
+### Display Camera Feeds
 
-**Features:**
-- Test Firebase connection with credentials
-- Send test notifications
-- Test topic subscriptions
-- Interactive notification testing
-
-**Usage:**
 ```bash
-# Run Firebase tests
-python tests/firebase_test.py
+# Display camera feed locally (requires display)
+python tests/rtsp_test.py --url "rtsp://192.168.1.100:554/stream1" --display --duration 30
+
+# Display in headless mode (for remote SSH)
+python tests/rtsp_test.py --url "rtsp://192.168.1.100:554/stream1" --display --headless --duration 30
+
+# Save frames to files in headless mode
+python tests/rtsp_test.py --url "rtsp://192.168.1.100:554/stream1" --display --headless --save-frames --output-dir "camera_frames" --duration 30
+
+# Save frames AND create video automatically
+python tests/rtsp_test.py --url "rtsp://192.168.1.100:554/stream1" --display --headless --save-frames --create-video --video-fps 15 --duration 60
 ```
 
-### 🚀 **API Test** (`api_test.py`)
-Tests FastAPI backend endpoints and functionality.
+### Video Creation
 
-**Features:**
-- Health check endpoint
-- Camera management endpoints
-- Event and notification endpoints
-- Comprehensive API testing
-
-**Usage:**
 ```bash
-# Test all API endpoints
-python tests/api_test.py --test all
+# Create video from existing frames directory
+python tests/rtsp_test.py --frames-to-video "frames/Camera" --video-output "camera_recording.mp4" --video-fps 10
 
-# Test specific endpoint
-python tests/api_test.py --test health
-python tests/api_test.py --test cameras
-python tests/api_test.py --test events
-python tests/api_test.py --test notifications
-
-# Test with custom URL
-python tests/api_test.py --url http://localhost:8000
+# Create video with custom FPS
+python tests/rtsp_test.py --frames-to-video "frames/Camera" --video-fps 30 --video-output "high_fps_video.mp4"
 ```
 
-### 🧪 **Test Runner** (`run_tests.py`)
-Orchestrates all tests and provides comprehensive system verification.
+### Multiple Camera Testing
 
-**Features:**
-- Run all tests automatically
-- Individual test selection
-- Detailed test reporting
-- System health summary
-
-**Usage:**
 ```bash
-# Run all tests
-python tests/run_tests.py
+# Test multiple cameras from config file
+python tests/rtsp_test.py --config tests/camera_config.json
 
-# Run specific test
-python tests/run_tests.py --test firebase
-python tests/run_tests.py --test backend
-python tests/run_tests.py --test rtsp
+# Display multiple feeds in headless mode
+python tests/rtsp_test.py --config tests/camera_config.json --display --headless --save-frames
+
+# Create videos for all cameras
+python tests/rtsp_test.py --config tests/camera_config.json --display --headless --save-frames --create-video
 ```
 
-## Quick Start
+## Remote SSH Usage
 
-### 1. Install Test Dependencies
+When working in a remote SSH session without a display, use the headless mode:
+
 ```bash
-pip install -r tests/requirements.txt
+# Test camera connectivity only
+python tests/rtsp_test.py --url "rtsp://192.168.1.100:554/stream1"
+
+# Display feed with frame saving
+python tests/rtsp_test.py --url "rtsp://192.168.1.100:554/stream1" --display --headless --save-frames --duration 60
+
+# Create video from saved frames
+python tests/rtsp_test.py --frames-to-video "frames/Camera" --video-output "remote_camera.mp4"
+
+# View saved frames and videos
+ls -la frames/
+ls -la *.mp4
 ```
 
-### 2. Run All Tests
+## Command Line Options
+
+- `--url`: Single RTSP URL to test
+- `--name`: Camera name (default: "Camera")
+- `--display`: Display video feed
+- `--duration`: Display duration in seconds (default: 30)
+- `--config`: JSON file with multiple camera configurations
+- `--headless`: Run in headless mode (no GUI windows)
+- `--save-frames`: Save frames to files (headless mode)
+- `--output-dir`: Output directory for saved frames (default: "frames")
+- `--create-video`: Create video from saved frames
+- `--video-fps`: FPS for created video (default: 10)
+- `--frames-to-video`: Create video from existing frames directory
+- `--video-output`: Output video filename
+
+## Video Creation Features
+
+### Automatic Video Creation
+When using `--create-video` with `--save-frames`, the script will:
+1. Save frames during camera recording
+2. Automatically create an MP4 video when recording completes
+3. Use the camera name for the video filename
+
+### Manual Video Creation
+Create videos from previously saved frames:
 ```bash
-python tests/run_tests.py
+python tests/rtsp_test.py --frames-to-video "frames/Camera" --video-output "my_video.mp4" --video-fps 15
 ```
 
-### 3. Test Individual Components
-```bash
-# Test RTSP cameras
-python tests/rtsp_test.py --url "your_camera_rtsp_url"
+### Video Formats
+- **Output Format**: MP4 (using H.264 codec)
+- **Supported Frame Formats**: JPG, JPEG, PNG
+- **Frame Naming**: Must include frame numbers (e.g., `Camera_000001.jpg`)
 
-# Test Firebase
-python tests/firebase_test.py
+### Video Quality Settings
+- **FPS**: Configurable (default: 10 FPS)
+- **Resolution**: Maintains original frame resolution
+- **Codec**: H.264 for compatibility
 
-# Test API (requires backend running)
-python tests/api_test.py
-```
+## Configuration File Format
 
-## Test Configuration
+Create a JSON file with camera configurations:
 
-### Camera Configuration (`camera_config.json`)
 ```json
 {
   "Front Door": "rtsp://192.168.1.100:554/stream1",
@@ -122,107 +133,56 @@ python tests/api_test.py
 }
 ```
 
-### Environment Setup
-Make sure you have:
-- Firebase credentials file: `backend/app/config/home-vision-ai-firebase-adminsdk-fbsvc-0ac8a1f589.json`
-- Backend running: `docker-compose up backend`
-- Frontend running: `docker-compose up frontend`
-- RTSP cameras accessible on your network
+## Interactive Mode
 
-## Test Results
+Run without arguments for interactive mode:
 
-### ✅ **Passing Tests**
-- All components working correctly
-- System ready for production use
+```bash
+python tests/rtsp_test.py
+```
 
-### ❌ **Failing Tests**
-- Check error messages for specific issues
-- Verify network connectivity
-- Ensure services are running
-- Check configuration files
+This provides a menu-driven interface for testing cameras and creating videos.
+
+## File Structure
+
+After running with video creation, you'll have:
+```
+frames/
+├── Camera_000001.jpg
+├── Camera_000002.jpg
+├── ...
+└── Camera_video.mp4
+```
 
 ## Troubleshooting
 
-### RTSP Camera Issues
-```bash
-# Test with VLC first
-vlc rtsp://your_camera_ip:554/stream1
+### Common Issues
 
-# Check network connectivity
-ping your_camera_ip
-telnet your_camera_ip 554
+1. **Connection Failed**: Check network connectivity and RTSP URL format
+2. **Authentication Error**: Verify username/password in RTSP URL
+3. **No Display**: Use `--headless` flag for remote SSH sessions
+4. **Frame Saving**: Ensure write permissions for output directory
+5. **Video Creation Failed**: Check if frames exist and have correct naming format
+6. **Video Codec Issues**: Ensure OpenCV is compiled with video codec support
+
+### RTSP URL Formats
+
+```
+rtsp://username:password@camera_ip:554/stream1
+rtsp://camera_ip:554/stream1
+rtsp://camera_ip:554/h264Preview_01_main
 ```
 
-### Firebase Issues
-- Verify credentials file exists and is valid
-- Check Firebase project configuration
-- Ensure Cloud Messaging is enabled
+### Network Requirements
 
-### API Issues
-- Ensure backend is running: `docker-compose up backend`
-- Check API documentation: http://localhost:8000/docs
-- Verify database connection
+- Cameras must be accessible from the test machine
+- Proper firewall configuration
+- Correct RTSP port (usually 554)
+- Network bandwidth for video streaming
 
-### Frontend Issues
-- Install dependencies: `cd frontend && npm install`
-- Start development server: `npm start`
-- Check for build errors
+### Video Creation Tips
 
-## Test Output Examples
-
-### Successful RTSP Test
-```
-Testing camera: Front Door
-RTSP URL: rtsp://192.168.1.100:554/stream1
-✅ Successfully connected to camera: Front Door
-   Frame size: (1080, 1920, 3)
-   FPS: 10.0
-```
-
-### Successful Firebase Test
-```
-Testing Firebase connection with credentials: backend/app/config/home-vision-ai-firebase-adminsdk-fbsvc-0ac8a1f589.json
-✅ Firebase initialized successfully
-   Project ID: home-vision-ai-xxxxx
-```
-
-### Successful API Test
-```
-Testing health endpoint...
-✅ Health endpoint working
-   Response: {'status': 'healthy'}
-
-Testing cameras endpoint...
-✅ Cameras endpoint working
-   Found 2 cameras
-   - Front Door Camera: online
-   - Back Yard Camera: online
-```
-
-## Continuous Integration
-
-These tests can be integrated into CI/CD pipelines:
-
-```yaml
-# Example GitHub Actions workflow
-- name: Run Tests
-  run: |
-    pip install -r tests/requirements.txt
-    python tests/run_tests.py --test all
-```
-
-## Contributing
-
-When adding new features:
-1. Add corresponding tests
-2. Update test documentation
-3. Ensure all tests pass
-4. Add test cases for edge cases
-
-## Support
-
-For test-related issues:
-1. Check the test output for specific error messages
-2. Verify system requirements are met
-3. Test individual components
-4. Check network and service connectivity 
+1. **Frame Rate**: Higher FPS = smoother video but larger file size
+2. **Duration**: Longer recordings = more frames = larger videos
+3. **Storage**: Ensure sufficient disk space for frames and videos
+4. **Naming**: Frame files must be sortable by name for correct video order 
