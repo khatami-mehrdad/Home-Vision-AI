@@ -121,7 +121,7 @@ class RTSPCameraTest:
                 if create_video:
                     print(f"Will create video with {video_fps} FPS")
         else:
-            print("Press 'q' to quit early")
+        print("Press 'q' to quit early")
         
         cap = cv2.VideoCapture(rtsp_url)
         
@@ -166,13 +166,13 @@ class RTSPCameraTest:
                         print(f"Frame {frame_count}, FPS: {fps:.1f}, Time: {elapsed:.1f}s")
                 else:
                     # Display frame in GUI window
-                    cv2.imshow(camera_name, frame)
+                cv2.imshow(camera_name, frame)
                 
                 frame_count += 1
                 
                 # Check for quit or timeout
                 if not headless:
-                    key = cv2.waitKey(1) & 0xFF
+                key = cv2.waitKey(1) & 0xFF
                     if key == ord('q'):
                         break
                 
@@ -184,7 +184,7 @@ class RTSPCameraTest:
         finally:
             cap.release()
             if not headless:
-                cv2.destroyAllWindows()
+            cv2.destroyAllWindows()
             
         print(f"Displayed {frame_count} frames over {elapsed:.1f} seconds")
         if save_frames:

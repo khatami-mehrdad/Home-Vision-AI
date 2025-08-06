@@ -1,0 +1,15 @@
+{
+  "name": "home-vision-ai",
+  "version": "1.0.0",
+  "description": "AI-powered home security camera system",
+  "scripts": {
+    "frontend": "cd frontend && npm start",
+    "frontend:install": "cd frontend && npm install",
+    "backend": "cd backend && python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload",
+    "dev": "concurrently \"npm run backend\" \"npm run frontend\"",
+    "install:all": "npm run frontend:install"
+  },
+  "devDependencies": {
+    "concurrently": "^7.6.0"
+  }
+}

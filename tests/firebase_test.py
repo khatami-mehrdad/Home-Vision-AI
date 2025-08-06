@@ -328,8 +328,8 @@ def main():
         print("\nInteractive Testing Mode")
         print("======================")
         
-        while True:
-            print("\nOptions:")
+    while True:
+        print("\nOptions:")
             print("1. Send basic test notification")
             print("2. Send detection event notification")
             print("3. Send camera status notification")
@@ -338,16 +338,16 @@ def main():
             print("6. Unsubscribe devices from topic")
             print("7. Run comprehensive tests")
             print("8. Exit")
-            
+        
             choice = input("\nEnter your choice (1-8): ").strip()
-            
-            if choice == "1":
-                topic = input("Enter topic name (default: test_topic): ").strip() or "test_topic"
+        
+        if choice == "1":
+            topic = input("Enter topic name (default: test_topic): ").strip() or "test_topic"
                 title = input("Enter notification title (default: Test Notification): ").strip() or "Test Notification"
                 body = input("Enter notification body: ").strip() or "This is a test notification from Home-Vision-AI"
                 test_notification_sending(args.credentials, topic, title, body)
-                
-            elif choice == "2":
+            
+        elif choice == "2":
                 camera = input("Enter camera name (default: Test Camera): ").strip() or "Test Camera"
                 test_detection_notification(args.credentials, camera)
                 
@@ -362,19 +362,19 @@ def main():
                 test_system_notification(args.credentials, title, body)
                 
             elif choice == "5":
-                print("Enter device tokens (one per line, empty line to finish):")
-                tokens = []
-                while True:
-                    token = input("Token: ").strip()
-                    if not token:
-                        break
-                    tokens.append(token)
-                
-                if tokens:
-                    topic = input("Enter topic name: ").strip()
-                    if topic:
+            print("Enter device tokens (one per line, empty line to finish):")
+            tokens = []
+            while True:
+                token = input("Token: ").strip()
+                if not token:
+                    break
+                tokens.append(token)
+            
+            if tokens:
+                topic = input("Enter topic name: ").strip()
+                if topic:
                         test_topic_subscription(args.credentials, tokens, topic)
-                        
+                    
             elif choice == "6":
                 print("Enter device tokens (one per line, empty line to finish):")
                 tokens = []
@@ -386,18 +386,18 @@ def main():
                 
                 if tokens:
                     topic = input("Enter topic name: ").strip()
-                    if topic:
+            if topic:
                         test_topic_unsubscription(args.credentials, tokens, topic)
                         
             elif choice == "7":
                 run_comprehensive_tests(args.credentials)
                 
             elif choice == "8":
-                print("Goodbye!")
-                break
-                
-            else:
-                print("Invalid choice. Please try again.")
+            print("Goodbye!")
+            break
+            
+        else:
+            print("Invalid choice. Please try again.")
     
     print("\n✅ All tests completed!")
 

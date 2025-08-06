@@ -52,12 +52,16 @@ class CameraService:
         """Internal method to handle camera streaming"""
         cap = None
         try:
+            logger.info(f"Attempting to open RTSP stream: {camera.rtsp_url}")
+            
             # Open RTSP stream
             cap = cv2.VideoCapture(camera.rtsp_url)
             
             if not cap.isOpened():
                 logger.error(f"Could not open camera stream: {camera.rtsp_url}")
                 return
+            
+            logger.info(f"Successfully opened camera stream: {camera.rtsp_url}")
             
             # Set camera properties
             cap.set(cv2.CAP_PROP_FPS, camera.frame_rate)
@@ -80,7 +84,7 @@ class CameraService:
                 
                 if not ret:
                     self.active_streams[camera.id]["error_count"] += 1
-                    logger.warning(f"Failed to read frame from camera {camera.id}")
+                    logger.warning(f"Failed to read frame from camera {camera.id} (error count: {self.active_streams[camera.id]['error_count']})")
                     
                     if self.active_streams[camera.id]["error_count"] > 10:
                         logger.error(f"Too many errors from camera {camera.id}, stopping stream")
@@ -96,6 +100,8 @@ class CameraService:
                 with self.stream_locks[camera.id]:
                     self.active_streams[camera.id]["last_frame"] = frame
                     self.active_streams[camera.id]["last_frame_time"] = datetime.now()
+                
+                logger.debug(f"Captured frame from camera {camera.id}: {frame.shape}")
                 
                 # Control frame rate
                 time.sleep(1 / camera.frame_rate)

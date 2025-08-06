@@ -1,0 +1,12 @@
+# Important JSON files that should be tracked
+!package.json
+!package-lock.json
+!tsconfig.json
+!tailwind.config.js
+!postcss.config.js
+!next.config.js
+!vite.config.js
+!webpack.config.js
+!tests/camera_config.json
+!backend/app/config/*.json
+!.env.example 
