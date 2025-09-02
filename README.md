@@ -20,12 +20,11 @@ Home-Vision-AI is a comprehensive smart home vision system powered by real-time 
 - Configurable confidence thresholds
 - Real-time object tracking and bounding boxes
 
-### 📱 **Web & Mobile Interface**
+### 🌐 **Web Interface**
 - Modern React web application
-- React Native mobile app for iOS and Android
 - Real-time camera grid view
 - Event timeline and video playback
-- Responsive design for mobile devices
+- Responsive design for all devices
 - Push notifications via Firebase
 
 ### 🔔 **Smart Notifications**
@@ -40,13 +39,7 @@ Home-Vision-AI is a comprehensive smart home vision system powered by real-time 
 - Video playback and download
 - Event filtering and search
 
-### 📱 **Mobile App Features**
-- **Authentication**: Secure login with token-based auth
-- **Camera Feeds**: Real-time camera monitoring with status indicators
-- **Push Notifications**: Instant alerts for detection events
-- **Dashboard**: System overview with key statistics
-- **Settings**: User preferences and app configuration
-- **Offline Support**: Basic functionality when network is unavailable
+
 
 ## Architecture
 
@@ -123,15 +116,7 @@ docker-compose up --build
 3. Add your RTSP camera streams
 4. Configure detection settings
 
-### 5. Mobile App Setup (Optional)
-1. Install React Native development environment
-2. Navigate to mobile directory: `cd mobile`
-3. Install dependencies: `npm install`
-4. Configure Firebase for push notifications
-5. Run the app:
-   - Android: `npm run android`
-   - iOS: `npm run ios`
-6. Use demo credentials: admin/admin123
+
 
 ## API Documentation
 
@@ -376,7 +361,6 @@ docker-compose -f docker-compose.test.yml up
 - [x] Event recording
 
 ### Phase 2: Advanced Features 🚧
-- [x] Mobile app (React Native)
 - [ ] Advanced AI models
 - [ ] Cloud storage integration
 - [ ] Multi-user support

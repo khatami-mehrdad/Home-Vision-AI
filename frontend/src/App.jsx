@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from 'react-query';
 import { Toaster } from 'react-hot-toast';
@@ -7,15 +7,6 @@ import { AuthProvider } from './context/AuthContext';
 import { CameraProvider } from './context/CameraContext';
 import { NotificationProvider } from './context/NotificationContext';
 
-import MobileHeader from './components/mobile/MobileHeader';
-import MobileBottomNav from './components/mobile/MobileBottomNav';
-import MobileHome from './pages/mobile/MobileHome';
-import MobileCameras from './pages/mobile/MobileCameras';
-import MobileNotifications from './pages/mobile/MobileNotifications';
-import MobileSettings from './pages/mobile/MobileSettings';
-import MobileLogin from './pages/mobile/MobileLogin';
-
-// Desktop components
 import Header from './components/common/Header';
 import Sidebar from './components/common/Sidebar';
 import Home from './pages/Home';
@@ -36,58 +27,6 @@ const queryClient = new QueryClient({
 });
 
 function App() {
-  const [isMobileView, setIsMobileView] = useState(window.innerWidth <= 768);
-
-  // Listen for window resize
-  React.useEffect(() => {
-    const handleResize = () => {
-      setIsMobileView(window.innerWidth <= 768);
-    };
-
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
-  }, []);
-
-  if (isMobileView) {
-    return (
-      <QueryClientProvider client={queryClient}>
-        <AuthProvider>
-          <CameraProvider>
-            <NotificationProvider>
-              <Router>
-                <div className="flex flex-col h-screen bg-gray-50">
-                  <MobileHeader />
-                  <main className="flex-1 overflow-y-auto bg-gray-50 pb-16">
-                    <Routes>
-                      <Route path="/" element={<MobileHome />} />
-                      <Route path="/cameras" element={<MobileCameras />} />
-                      <Route path="/notifications" element={<MobileNotifications />} />
-                      <Route path="/settings" element={<MobileSettings />} />
-                      <Route path="/login" element={<MobileLogin />} />
-                    </Routes>
-                  </main>
-                  <MobileBottomNav />
-                  <Toaster
-                    position="top-center"
-                    toastOptions={{
-                      duration: 4000,
-                      style: {
-                        background: '#363636',
-                        color: '#fff',
-                        borderRadius: '8px',
-                      },
-                    }}
-                  />
-                </div>
-              </Router>
-            </NotificationProvider>
-          </CameraProvider>
-        </AuthProvider>
-      </QueryClientProvider>
-    );
-  }
-
-  // Desktop view (existing)
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
