@@ -29,9 +29,15 @@ class SmartNVRDetectionService:
         self.min_track_hits = 3  # minimum detections to confirm track
         self.track_distance_threshold = 100  # pixels
         
-        # Latency tracking
+        # Comprehensive latency tracking
         self.frame_capture_times = {}  # camera_id -> last_frame_capture_time
         self.latency_history = defaultdict(list)  # camera_id -> [latency_measurements]
+        self.detailed_latencies = defaultdict(lambda: {
+            'rtsp_read_times': [],      # Time to read frame from RTSP
+            'ai_processing_times': [],  # DeGirum inference time
+            'total_pipeline_times': [], # End-to-end processing
+            'frame_intervals': []       # Time between frames (for buffer analysis)
+        })
         
         # Event recording parameters
         self.record_buffer_seconds = 10  # seconds before/after event
@@ -244,17 +250,34 @@ class SmartNVRDetectionService:
                 
                 frame_count = 0
                 last_frame_time = time.time()
+                last_successful_read = time.time()
                 
                 try:
                     while True:
                         current_time = time.time()
                         
+                        # Measure RTSP read time
+                        rtsp_read_start = time.time()
                         ret, frame = stream.read()
+                        rtsp_read_time = time.time() - rtsp_read_start
+                        
                         if not ret:
                             logger.warning("📺 End of video stream or failed to read frame")
                             break
                             
                         frame_count += 1
+                        
+                        # Track RTSP read performance
+                        self.detailed_latencies[camera_id]['rtsp_read_times'].append(rtsp_read_time)
+                        if len(self.detailed_latencies[camera_id]['rtsp_read_times']) > 20:
+                            self.detailed_latencies[camera_id]['rtsp_read_times'].pop(0)
+                        
+                        # Track frame intervals (for buffer analysis)
+                        frame_interval = current_time - last_successful_read
+                        self.detailed_latencies[camera_id]['frame_intervals'].append(frame_interval)
+                        if len(self.detailed_latencies[camera_id]['frame_intervals']) > 20:
+                            self.detailed_latencies[camera_id]['frame_intervals'].pop(0)
+                        last_successful_read = current_time
                         
                         # FPS control: only yield frames at target interval
                         time_since_last = current_time - last_frame_time
@@ -285,6 +308,13 @@ class SmartNVRDetectionService:
                 
                 # Calculate processing FPS
                 current_time = time.time()
+                ai_processing_time = current_time - processing_start
+                
+                # Store AI processing time
+                self.detailed_latencies[camera_id]['ai_processing_times'].append(ai_processing_time)
+                if len(self.detailed_latencies[camera_id]['ai_processing_times']) > 20:
+                    self.detailed_latencies[camera_id]['ai_processing_times'].pop(0)
+                
                 if processing_count > 1:
                     time_since_last = current_time - last_processing_time
                     processing_times.append(time_since_last)
@@ -292,7 +322,7 @@ class SmartNVRDetectionService:
                         processing_times.pop(0)  # Keep last 10 measurements
                     avg_interval = sum(processing_times) / len(processing_times)
                     current_fps = 1.0 / avg_interval if avg_interval > 0 else 0
-                    logger.info(f"📈 Processing frame {processing_count}, current FPS: {current_fps:.2f}")
+                    logger.info(f"📈 Processing frame {processing_count}, current FPS: {current_fps:.2f}, AI time: {ai_processing_time*1000:.1f}ms")
                 
                 last_processing_time = current_time
                 
@@ -406,10 +436,25 @@ class SmartNVRDetectionService:
                 if events:
                     self._record_events(camera_id, events, current_time)
                 
-                # Calculate average latency
+                # Calculate average latencies for different components
                 avg_latency = None
                 if camera_id in self.latency_history and len(self.latency_history[camera_id]) > 0:
                     avg_latency = sum(self.latency_history[camera_id]) / len(self.latency_history[camera_id])
+                
+                # Calculate component averages
+                latency_breakdown = {}
+                if camera_id in self.detailed_latencies:
+                    details = self.detailed_latencies[camera_id]
+                    
+                    if details['rtsp_read_times']:
+                        latency_breakdown['avg_rtsp_read_ms'] = (sum(details['rtsp_read_times']) / len(details['rtsp_read_times'])) * 1000
+                    
+                    if details['ai_processing_times']:
+                        latency_breakdown['avg_ai_processing_ms'] = (sum(details['ai_processing_times']) / len(details['ai_processing_times'])) * 1000
+                    
+                    if details['frame_intervals']:
+                        latency_breakdown['avg_frame_interval_ms'] = (sum(details['frame_intervals']) / len(details['frame_intervals'])) * 1000
+                        latency_breakdown['actual_fps'] = 1000 / latency_breakdown['avg_frame_interval_ms'] if latency_breakdown['avg_frame_interval_ms'] > 0 else 0
                 
                 yield {
                     "detections": detections,
@@ -419,7 +464,9 @@ class SmartNVRDetectionService:
                     "timestamp": current_time,
                     "camera_id": camera_id,
                     "end_to_end_latency": end_to_end_latency,
-                    "avg_latency": avg_latency
+                    "avg_latency": avg_latency,
+                    "latency_breakdown": latency_breakdown,
+                    "ai_processing_time": ai_processing_time
                 }
                 
         except Exception as e:

@@ -202,7 +202,7 @@ const CameraFeed = ({ cameraId, cameraName }) => {
         </div>
         
         <div className="bg-gray-50 p-2 rounded">
-          <div className="text-gray-600">Latency</div>
+          <div className="text-gray-600">Total Latency</div>
           <div className="font-medium text-purple-600">
             {cameraStatus?.avg_latency_ms || '0.0'} ms
           </div>
@@ -215,6 +215,49 @@ const CameraFeed = ({ cameraId, cameraName }) => {
           </div>
         </div>
       </div>
+      
+      {/* Detailed Latency Breakdown */}
+      {cameraStatus?.latency_breakdown && (
+        <div className="mt-3">
+          <h4 className="text-sm font-medium text-gray-700 mb-2">Latency Breakdown</h4>
+          <div className="grid grid-cols-2 gap-2 text-xs">
+            <div className="bg-blue-50 p-2 rounded">
+              <div className="text-gray-600">RTSP Read</div>
+              <div className="font-medium text-blue-600">
+                {cameraStatus.latency_breakdown.rtsp_read_ms || '0.0'} ms
+              </div>
+            </div>
+            
+            <div className="bg-green-50 p-2 rounded">
+              <div className="text-gray-600">AI Processing</div>
+              <div className="font-medium text-green-600">
+                {cameraStatus.latency_breakdown.ai_processing_ms || '0.0'} ms
+              </div>
+            </div>
+            
+            <div className="bg-yellow-50 p-2 rounded">
+              <div className="text-gray-600">Frame Interval</div>
+              <div className="font-medium text-yellow-600">
+                {cameraStatus.latency_breakdown.frame_interval_ms || '0.0'} ms
+              </div>
+            </div>
+            
+            <div className="bg-indigo-50 p-2 rounded">
+              <div className="text-gray-600">Camera FPS</div>
+              <div className="font-medium text-indigo-600">
+                {cameraStatus.latency_breakdown.actual_camera_fps || '0.0'} fps
+              </div>
+            </div>
+          </div>
+          
+          <div className="mt-2 p-2 bg-red-50 rounded text-xs">
+            <div className="text-gray-600">4-Second Delay Analysis</div>
+            <div className="text-red-600 font-medium">
+              Processing: {cameraStatus.avg_latency_ms || '0'}ms + Camera Buffer: ~{4000 - (cameraStatus.avg_latency_ms || 0)}ms
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -119,6 +119,8 @@ class CameraService:
                         events = nvr_result["events"]
                         end_to_end_latency = nvr_result.get("end_to_end_latency")
                         avg_latency = nvr_result.get("avg_latency")
+                        latency_breakdown = nvr_result.get("latency_breakdown", {})
+                        ai_processing_time = nvr_result.get("ai_processing_time")
                         
                         # Store latest frame and Smart NVR data
                         current_time = datetime.now()
@@ -152,6 +154,10 @@ class CameraService:
                                 self.active_streams[camera.id]["current_latency"] = end_to_end_latency
                             if avg_latency is not None:
                                 self.active_streams[camera.id]["avg_latency"] = avg_latency
+                            if latency_breakdown:
+                                self.active_streams[camera.id]["latency_breakdown"] = latency_breakdown
+                            if ai_processing_time is not None:
+                                self.active_streams[camera.id]["ai_processing_time"] = ai_processing_time
                             
                         # Log frame processing info periodically
                         frame_count = self.active_streams[camera.id]["frame_count"]
@@ -244,6 +250,9 @@ class CameraService:
         if "start_time" in stream_data:
             uptime_seconds = (datetime.now() - stream_data["start_time"]).total_seconds()
         
+        # Get latency breakdown
+        latency_breakdown = stream_data.get("latency_breakdown", {})
+        
         return {
             "is_streaming": stream_data["is_running"],
             "last_frame_time": stream_data["last_frame_time"],
@@ -254,7 +263,14 @@ class CameraService:
             "detections_count": len(stream_data.get("last_detections", [])),
             "target_fps": 10,  # Our target FPS from config
             "current_latency_ms": round(stream_data.get("current_latency", 0) * 1000, 1) if stream_data.get("current_latency") else 0,
-            "avg_latency_ms": round(stream_data.get("avg_latency", 0) * 1000, 1) if stream_data.get("avg_latency") else 0
+            "avg_latency_ms": round(stream_data.get("avg_latency", 0) * 1000, 1) if stream_data.get("avg_latency") else 0,
+            "latency_breakdown": {
+                "rtsp_read_ms": round(latency_breakdown.get("avg_rtsp_read_ms", 0), 1),
+                "ai_processing_ms": round(latency_breakdown.get("avg_ai_processing_ms", 0), 1),
+                "frame_interval_ms": round(latency_breakdown.get("avg_frame_interval_ms", 0), 1),
+                "actual_camera_fps": round(latency_breakdown.get("actual_fps", 0), 2)
+            },
+            "ai_processing_time_ms": round(stream_data.get("ai_processing_time", 0) * 1000, 1) if stream_data.get("ai_processing_time") else 0
         }
     
     def get_all_camera_statuses(self) -> Dict[int, Dict[str, Any]]:
