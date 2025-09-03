@@ -29,6 +29,10 @@ class SmartNVRDetectionService:
         self.min_track_hits = 3  # minimum detections to confirm track
         self.track_distance_threshold = 100  # pixels
         
+        # Latency tracking
+        self.frame_capture_times = {}  # camera_id -> last_frame_capture_time
+        self.latency_history = defaultdict(list)  # camera_id -> [latency_measurements]
+        
         # Event recording parameters
         self.record_buffer_seconds = 10  # seconds before/after event
         self.max_events_per_camera = 100
@@ -257,6 +261,8 @@ class SmartNVRDetectionService:
                         if time_since_last >= frame_interval:
                             logger.debug(f"🎬 Yielding frame {frame_count} (interval: {time_since_last:.3f}s)")
                             last_frame_time = current_time
+                            # Store frame capture time for latency calculation
+                            self.frame_capture_times[camera_id] = current_time
                             yield frame
                         else:
                             # Skip this frame to maintain target FPS
@@ -289,6 +295,19 @@ class SmartNVRDetectionService:
                     logger.info(f"📈 Processing frame {processing_count}, current FPS: {current_fps:.2f}")
                 
                 last_processing_time = current_time
+                
+                # Calculate end-to-end latency (RTSP capture to detection output)
+                end_to_end_latency = None
+                if camera_id in self.frame_capture_times:
+                    frame_capture_time = self.frame_capture_times[camera_id]
+                    end_to_end_latency = current_time - frame_capture_time
+                    
+                    # Store latency in history (keep last 10 measurements)
+                    self.latency_history[camera_id].append(end_to_end_latency)
+                    if len(self.latency_history[camera_id]) > 10:
+                        self.latency_history[camera_id].pop(0)
+                    
+                    logger.info(f"⏱️ End-to-end latency: {end_to_end_latency*1000:.1f}ms")
                 
                 # Debug: Check what's inside inference_result
                 logger.info(f"🔍 DeGirum result type: {type(inference_result)}")
@@ -387,13 +406,20 @@ class SmartNVRDetectionService:
                 if events:
                     self._record_events(camera_id, events, current_time)
                 
+                # Calculate average latency
+                avg_latency = None
+                if camera_id in self.latency_history and len(self.latency_history[camera_id]) > 0:
+                    avg_latency = sum(self.latency_history[camera_id]) / len(self.latency_history[camera_id])
+                
                 yield {
                     "detections": detections,
                     "tracks": tracks,
                     "events": events,
                     "processed_frame": processed_frame,  # DeGirum's image_overlay
                     "timestamp": current_time,
-                    "camera_id": camera_id
+                    "camera_id": camera_id,
+                    "end_to_end_latency": end_to_end_latency,
+                    "avg_latency": avg_latency
                 }
                 
         except Exception as e:

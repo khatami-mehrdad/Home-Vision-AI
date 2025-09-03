@@ -117,15 +117,41 @@ class CameraService:
                         detections = nvr_result["detections"]
                         tracks = nvr_result["tracks"]
                         events = nvr_result["events"]
+                        end_to_end_latency = nvr_result.get("end_to_end_latency")
+                        avg_latency = nvr_result.get("avg_latency")
                         
                         # Store latest frame and Smart NVR data
+                        current_time = datetime.now()
                         with self.stream_locks[camera.id]:
+                            # Update frame data
                             self.active_streams[camera.id]["last_frame"] = processed_frame
-                            self.active_streams[camera.id]["last_frame_time"] = datetime.now()
+                            self.active_streams[camera.id]["last_frame_time"] = current_time
                             self.active_streams[camera.id]["last_detections"] = detections
                             self.active_streams[camera.id]["last_tracks"] = tracks
                             self.active_streams[camera.id]["last_events"] = events
                             self.active_streams[camera.id]["frame_count"] += 1
+                            
+                            # Calculate and store FPS
+                            if "last_process_time" in self.active_streams[camera.id]:
+                                time_diff = (current_time - self.active_streams[camera.id]["last_process_time"]).total_seconds()
+                                if time_diff > 0:
+                                    fps = 1.0 / time_diff
+                                    
+                                    # Maintain FPS history (last 10 measurements)
+                                    if "fps_history" not in self.active_streams[camera.id]:
+                                        self.active_streams[camera.id]["fps_history"] = []
+                                    
+                                    self.active_streams[camera.id]["fps_history"].append(fps)
+                                    if len(self.active_streams[camera.id]["fps_history"]) > 10:
+                                        self.active_streams[camera.id]["fps_history"].pop(0)
+                            
+                            self.active_streams[camera.id]["last_process_time"] = current_time
+                            
+                            # Store latency data
+                            if end_to_end_latency is not None:
+                                self.active_streams[camera.id]["current_latency"] = end_to_end_latency
+                            if avg_latency is not None:
+                                self.active_streams[camera.id]["avg_latency"] = avg_latency
                             
                         # Log frame processing info periodically
                         frame_count = self.active_streams[camera.id]["frame_count"]
@@ -200,14 +226,35 @@ class CameraService:
             return {
                 "is_streaming": False,
                 "last_frame_time": None,
-                "error_count": 0
+                "error_count": 0,
+                "current_fps": 0.0,
+                "frame_count": 0,
+                "uptime_seconds": 0
             }
         
         stream_data = self.active_streams[camera_id]
+        
+        # Calculate current FPS based on recent frame times
+        current_fps = 0.0
+        if "fps_history" in stream_data and len(stream_data["fps_history"]) > 0:
+            current_fps = sum(stream_data["fps_history"]) / len(stream_data["fps_history"])
+        
+        # Calculate uptime
+        uptime_seconds = 0
+        if "start_time" in stream_data:
+            uptime_seconds = (datetime.now() - stream_data["start_time"]).total_seconds()
+        
         return {
             "is_streaming": stream_data["is_running"],
             "last_frame_time": stream_data["last_frame_time"],
-            "error_count": stream_data["error_count"]
+            "error_count": stream_data["error_count"],
+            "frame_count": stream_data.get("frame_count", 0),
+            "current_fps": round(current_fps, 2),
+            "uptime_seconds": round(uptime_seconds, 0),
+            "detections_count": len(stream_data.get("last_detections", [])),
+            "target_fps": 10,  # Our target FPS from config
+            "current_latency_ms": round(stream_data.get("current_latency", 0) * 1000, 1) if stream_data.get("current_latency") else 0,
+            "avg_latency_ms": round(stream_data.get("avg_latency", 0) * 1000, 1) if stream_data.get("avg_latency") else 0
         }
     
     def get_all_camera_statuses(self) -> Dict[int, Dict[str, Any]]:

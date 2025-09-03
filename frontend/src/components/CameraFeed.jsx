@@ -4,8 +4,22 @@ const CameraFeed = ({ cameraId, cameraName }) => {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [cameraStatus, setCameraStatus] = useState(null);
   const imgRef = useRef(null);
   const intervalRef = useRef(null);
+  const statusIntervalRef = useRef(null);
+
+  const fetchCameraStatus = async () => {
+    try {
+      const response = await fetch(`http://localhost:8000/api/v1/cameras/${cameraId}/status`);
+      if (response.ok) {
+        const status = await response.json();
+        setCameraStatus(status);
+      }
+    } catch (err) {
+      console.error('Error fetching camera status:', err);
+    }
+  };
 
   const startCameraStream = async () => {
     try {
@@ -40,6 +54,11 @@ const CameraFeed = ({ cameraId, cameraName }) => {
     intervalRef.current = setInterval(() => {
       fetchFrame();
     }, 1000 / 10); // 10 FPS
+    
+    // Start polling for camera status (every 2 seconds)
+    statusIntervalRef.current = setInterval(() => {
+      fetchCameraStatus();
+    }, 2000);
   };
 
   const stopStream = () => {
@@ -47,6 +66,10 @@ const CameraFeed = ({ cameraId, cameraName }) => {
     if (intervalRef.current) {
       clearInterval(intervalRef.current);
       intervalRef.current = null;
+    }
+    if (statusIntervalRef.current) {
+      clearInterval(statusIntervalRef.current);
+      statusIntervalRef.current = null;
     }
   };
 
@@ -149,8 +172,48 @@ const CameraFeed = ({ cameraId, cameraName }) => {
         />
       </div>
       
-      <div className="mt-2 text-sm text-gray-600">
-        Status: {error ? 'Error' : (isPlaying ? 'Streaming' : 'Stopped')}
+      <div className="mt-3 grid grid-cols-2 gap-4 text-sm">
+        <div className="bg-gray-50 p-2 rounded">
+          <div className="text-gray-600">Status</div>
+          <div className={`font-medium ${error ? 'text-red-600' : (isPlaying ? 'text-green-600' : 'text-gray-600')}`}>
+            {error ? 'Error' : (isPlaying ? 'Streaming' : 'Stopped')}
+          </div>
+        </div>
+        
+        <div className="bg-gray-50 p-2 rounded">
+          <div className="text-gray-600">AI FPS</div>
+          <div className="font-medium text-blue-600">
+            {cameraStatus?.current_fps || '0.00'} fps
+          </div>
+        </div>
+        
+        <div className="bg-gray-50 p-2 rounded">
+          <div className="text-gray-600">Frames</div>
+          <div className="font-medium">
+            {cameraStatus?.frame_count || 0}
+          </div>
+        </div>
+        
+        <div className="bg-gray-50 p-2 rounded">
+          <div className="text-gray-600">Detections</div>
+          <div className="font-medium text-orange-600">
+            {cameraStatus?.detections_count || 0}
+          </div>
+        </div>
+        
+        <div className="bg-gray-50 p-2 rounded">
+          <div className="text-gray-600">Latency</div>
+          <div className="font-medium text-purple-600">
+            {cameraStatus?.avg_latency_ms || '0.0'} ms
+          </div>
+        </div>
+        
+        <div className="bg-gray-50 p-2 rounded">
+          <div className="text-gray-600">Uptime</div>
+          <div className="font-medium">
+            {cameraStatus?.uptime_seconds ? `${Math.floor(cameraStatus.uptime_seconds / 60)}m ${cameraStatus.uptime_seconds % 60}s` : '0s'}
+          </div>
+        </div>
       </div>
     </div>
   );
