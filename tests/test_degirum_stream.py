@@ -20,7 +20,7 @@ def test_degirum_stream():
     """Test DeGirum stream processing with RTSP"""
     
     # Your RTSP URL - replace with your camera URL
-    rtsp_url = "rtsp://mehrdad:hafez21@192.168.1.32:554/stream2"
+    rtsp_url = "rtsp://mehrdad:hafez21_M@192.168.1.32:554/stream2"
     camera_id = 1
     
     print("Testing DeGirum Stream Processing...")

@@ -181,29 +181,69 @@ class SmartNVRDetectionService:
                     logger.warning("No .results attribute and not iterable")
                 
                 if results_list:
-                    # inference_result is a DetectionResults object, iterate through its detections
+                    # Debug: Log the first detection to understand format
+                    if len(results_list) > 0:
+                        first_detection = results_list[0]
+                        logger.info(f"🔍 First detection type: {type(first_detection)}")
+                        logger.info(f"🔍 First detection content: {first_detection}")
+                        if hasattr(first_detection, '__dict__'):
+                            logger.info(f"🔍 First detection attributes: {first_detection.__dict__}")
+                        if isinstance(first_detection, dict):
+                            logger.info(f"🔍 First detection keys: {first_detection.keys()}")
+                    
+                    # Process detections with format handling
                     for detection in results_list:
-                        bbox = detection.bbox
-                        x, y, w, h = int(bbox[0]), int(bbox[1]), int(bbox[2] - bbox[0]), int(bbox[3] - bbox[1])
-                        
-                        confidence = float(detection.score)
-                        if confidence < self.confidence_threshold:
+                        try:
+                            # Handle different detection result formats
+                            if isinstance(detection, dict):
+                                # Handle dictionary format
+                                bbox = detection.get('bbox', detection.get('bounding_box'))
+                                confidence = float(detection.get('score', detection.get('confidence', 0)))
+                                object_type = str(detection.get('label', detection.get('class_name', 'unknown')))
+                                class_id = detection.get('category_id', detection.get('class_id', 0))
+                                logger.info(f"📦 Dict detection: {object_type} ({confidence:.2f}) bbox={bbox}")
+                            else:
+                                # Handle object format  
+                                bbox = detection.bbox if hasattr(detection, 'bbox') else None
+                                confidence = float(detection.score if hasattr(detection, 'score') else 0)
+                                object_type = str(detection.label if hasattr(detection, 'label') else 'unknown')
+                                class_id = detection.category_id if hasattr(detection, 'category_id') else 0
+                                logger.info(f"📦 Object detection: {object_type} ({confidence:.2f}) bbox={bbox}")
+                            
+                            if bbox is None:
+                                logger.warning(f"❌ No bbox found in detection: {detection}")
+                                continue
+                                
+                            if confidence < self.confidence_threshold:
+                                logger.info(f"⏭️ Skipping low confidence detection: {confidence:.2f} < {self.confidence_threshold}")
+                                continue
+                            
+                            # Convert bbox to x, y, w, h format
+                            if len(bbox) >= 4:
+                                x, y, w, h = int(bbox[0]), int(bbox[1]), int(bbox[2] - bbox[0]), int(bbox[3] - bbox[1])
+                                logger.info(f"✅ Processed detection: {object_type} at ({x},{y},{w},{h})")
+                            else:
+                                logger.warning(f"❌ Invalid bbox format: {bbox}")
+                                continue
+                            
+                            detections.append({
+                                "object_type": object_type,
+                                "confidence": confidence,
+                                "bounding_box": [x, y, w, h],
+                                "center": [x + w//2, y + h//2],
+                                "area": w * h,
+                                "degirum_data": {
+                                    "class_id": class_id,
+                                    "bbox_normalized": bbox,
+                                    "score": confidence
+                                }
+                            })
+                            
+                        except Exception as det_error:
+                            logger.error(f"❌ Error processing detection: {det_error}")
+                            logger.error(f"Detection object: {detection}")
+                            logger.error(f"Detection type: {type(detection)}")
                             continue
-                        
-                        object_type = str(detection.label)
-                        
-                        detections.append({
-                            "object_type": object_type,
-                            "confidence": confidence,
-                            "bounding_box": [x, y, w, h],
-                            "center": [x + w//2, y + h//2],
-                            "area": w * h,
-                            "degirum_data": {
-                                "class_id": detection.category_id,
-                                "bbox_normalized": bbox,
-                                "score": detection.score
-                            }
-                        })
                 
                 # Get the image with overlays (this is what we want to display)
                 processed_frame = inference_result.image_overlay

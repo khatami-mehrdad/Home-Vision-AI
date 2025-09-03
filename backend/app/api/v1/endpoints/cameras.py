@@ -22,6 +22,9 @@ def load_camera_config():
     try:
         # Look for config file relative to project root
         config_paths = [
+            "camera_config.json",
+            "../camera_config.json", 
+            "../../camera_config.json",
             "tests/camera_config.json",
             "../tests/camera_config.json",
             "../../tests/camera_config.json"
@@ -30,8 +33,16 @@ def load_camera_config():
         for config_path in config_paths:
             if os.path.exists(config_path):
                 with open(config_path, 'r') as f:
-                    config = json.load(f)
-                    print(f"Loaded camera config from {config_path}: {config}")
+                    full_config = json.load(f)
+                    print(f"Loaded camera config from {config_path}: {full_config}")
+                    
+                    # Convert cameras array to simple name->rtsp_url mapping
+                    config = {}
+                    if "cameras" in full_config:
+                        for camera in full_config["cameras"]:
+                            config[camera["name"]] = camera["rtsp_url"]
+                    
+                    print(f"Converted config: {config}")
                     return config
         
         print("No camera config file found")
