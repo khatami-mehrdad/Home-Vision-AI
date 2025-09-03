@@ -1,16 +1,20 @@
 from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from typing import List, Optional
+from datetime import datetime
 import io
 import cv2
 import numpy as np
 import json
 import os
+import logging
 
 from app.models.camera import Camera
 from app.services.camera_service import camera_service
 from app.schemas.camera import CameraCreate, CameraUpdate, CameraResponse
+from app.database import get_db
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 def load_camera_config():
@@ -214,11 +218,12 @@ async def stop_camera_stream(camera_id: int):
 
 @router.get("/{camera_id}/frame")
 async def get_camera_frame(camera_id: int):
-    """Get the latest frame from a camera"""
-    # Try to get real frame from camera service
+    """Get the latest frame from a camera with DeGirum AI overlays"""
+    # Try to get DeGirum processed frame from camera service
     frame_bytes = camera_service.get_latest_frame(camera_id)
     
     if frame_bytes is None:
+        logger.warning(f"No DeGirum frame available for camera {camera_id}, returning test frame")
         # Return a test frame if no real frame is available
         test_frame = create_test_frame()
         ret, buffer = cv2.imencode('.jpg', test_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
@@ -226,11 +231,17 @@ async def get_camera_frame(camera_id: int):
             frame_bytes = buffer.tobytes()
         else:
             raise HTTPException(status_code=404, detail="Failed to create test frame")
+    else:
+        logger.debug(f"Serving DeGirum processed frame for camera {camera_id}, size: {len(frame_bytes)} bytes")
     
     return StreamingResponse(
         io.BytesIO(frame_bytes),
         media_type="image/jpeg",
-        headers={"Cache-Control": "no-cache"}
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
     )
 
 @router.get("/{camera_id}/status")
@@ -245,4 +256,113 @@ async def get_camera_status(camera_id: int):
 @router.get("/status/all")
 async def get_all_camera_statuses():
     """Get status for all active cameras"""
-    return camera_service.get_all_camera_statuses() 
+    return camera_service.get_all_camera_statuses()
+
+@router.get("/{camera_id}/detections")
+async def get_camera_detections(camera_id: int):
+    """Get latest AI detection results from a camera"""
+    try:
+        detections = camera_service.get_latest_detections(camera_id)
+        return {
+            "camera_id": camera_id,
+            "detections": detections,
+            "timestamp": datetime.now()
+        }
+    except Exception as e:
+        logger.error(f"Error getting detections for camera {camera_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get camera detections")
+
+@router.get("/{camera_id}/tracks")
+async def get_camera_tracks(camera_id: int):
+    """Get active object tracks from Smart NVR"""
+    try:
+        tracks = camera_service.get_latest_tracks(camera_id)
+        return {
+            "camera_id": camera_id,
+            "tracks": tracks,
+            "timestamp": datetime.now()
+        }
+    except Exception as e:
+        logger.error(f"Error getting tracks for camera {camera_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get camera tracks")
+
+@router.get("/{camera_id}/events")
+async def get_camera_events(camera_id: int, limit: int = 50):
+    """Get Smart NVR event history for a camera"""
+    try:
+        from app.services.ai_detection_service import ai_detection_service
+        events = ai_detection_service.get_event_history(camera_id, limit)
+        return {
+            "camera_id": camera_id,
+            "events": events,
+            "total": len(events),
+            "timestamp": datetime.now()
+        }
+    except Exception as e:
+        logger.error(f"Error getting events for camera {camera_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get camera events")
+
+@router.post("/{camera_id}/zones")
+async def add_detection_zone(camera_id: int, zone_data: dict):
+    """Add a detection zone for Smart NVR"""
+    try:
+        from app.services.ai_detection_service import ai_detection_service
+        
+        success = ai_detection_service.add_detection_zone(
+            camera_id=camera_id,
+            zone_name=zone_data["name"],
+            zone_type=zone_data["type"],
+            coordinates=zone_data["coordinates"],
+            restricted=zone_data.get("restricted", False)
+        )
+        
+        if success:
+            return {"message": f"Detection zone '{zone_data['name']}' added successfully"}
+        else:
+            raise HTTPException(status_code=400, detail="Failed to add detection zone")
+            
+    except Exception as e:
+        logger.error(f"Error adding detection zone for camera {camera_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to add detection zone")
+
+@router.get("/{camera_id}/zones")
+async def get_detection_zones(camera_id: int):
+    """Get all detection zones for a camera"""
+    try:
+        from app.services.ai_detection_service import ai_detection_service
+        zones = ai_detection_service.get_detection_zones(camera_id)
+        return {
+            "camera_id": camera_id,
+            "zones": zones,
+            "total": len(zones)
+        }
+    except Exception as e:
+        logger.error(f"Error getting detection zones for camera {camera_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get detection zones")
+
+@router.delete("/{camera_id}/zones/{zone_name}")
+async def remove_detection_zone(camera_id: int, zone_name: str):
+    """Remove a detection zone"""
+    try:
+        from app.services.ai_detection_service import ai_detection_service
+        success = ai_detection_service.remove_detection_zone(camera_id, zone_name)
+        
+        if success:
+            return {"message": f"Detection zone '{zone_name}' removed successfully"}
+        else:
+            raise HTTPException(status_code=404, detail="Detection zone not found")
+            
+    except Exception as e:
+        logger.error(f"Error removing detection zone for camera {camera_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to remove detection zone")
+
+@router.get("/nvr/statistics")
+async def get_nvr_statistics():
+    """Get Smart NVR system statistics"""
+    try:
+        from app.services.ai_detection_service import ai_detection_service
+        stats = ai_detection_service.get_nvr_statistics()
+        return stats
+    except Exception as e:
+        logger.error(f"Error getting NVR statistics: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get NVR statistics") 

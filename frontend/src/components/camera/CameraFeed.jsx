@@ -133,7 +133,7 @@ const CameraFeed = ({ camera }) => {
             <Play className="h-4 w-4" />
           </button>
         )}
-        
+
         <button
           onClick={refreshStream}
           className="p-2 bg-black bg-opacity-50 text-white rounded hover:bg-opacity-75"
