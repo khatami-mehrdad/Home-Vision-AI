@@ -66,13 +66,15 @@ class CameraService:
     
     def _stream_camera(self, camera):
         """Internal method to handle DeGirum direct stream processing"""
+        camera_id = camera.id
+        logger.info(f"🎬 _stream_camera STARTING for camera {camera_id}: {camera.name}")
+        
         try:
-            logger.info(f"🎬 _stream_camera called for camera {camera.id}: {camera.name}")
             logger.info(f"📹 RTSP URL: {camera.rtsp_url}")
             
             # Initialize stream data with Smart NVR capabilities
-            logger.info(f"🔧 Initializing stream data for camera {camera.id}")
-            self.active_streams[camera.id] = {
+            logger.info(f"🔧 Initializing stream data for camera {camera_id}")
+            self.active_streams[camera_id] = {
                 "rtsp_url": camera.rtsp_url,
                 "last_frame": None,
                 "last_frame_time": None,
@@ -80,18 +82,34 @@ class CameraService:
                 "last_tracks": [],
                 "last_events": [],
                 "is_running": True,
-                "error_count": 0
+                "error_count": 0,
+                "start_time": datetime.now(),
+                "frame_count": 0
             }
             
-            logger.info(f"✅ Stream data initialized for camera {camera.id}: {camera.name}")
+            logger.info(f"✅ Stream data initialized for camera {camera_id}")
             logger.info(f"🚀 About to call ai_detection_service.process_degirum_stream...")
+            
+            # Add heartbeat logging
+            import threading
+            def heartbeat():
+                while camera_id in self.active_streams and self.active_streams[camera_id].get("is_running", False):
+                    time.sleep(30)  # Every 30 seconds
+                    if camera_id in self.active_streams:
+                        uptime = datetime.now() - self.active_streams[camera_id]["start_time"]
+                        frame_count = self.active_streams[camera_id]["frame_count"]
+                        logger.info(f"💓 Camera {camera_id} heartbeat: {uptime}, {frame_count} frames processed")
+                        
+            heartbeat_thread = threading.Thread(target=heartbeat, daemon=True)
+            heartbeat_thread.start()
             
             # Process DeGirum stream directly with RTSP URL in separate thread
             def process_stream():
                 try:
+                    logger.info(f"🎯 Starting DeGirum stream processing loop for camera {camera.id}")
                     for nvr_result in ai_detection_service.process_degirum_stream(camera.rtsp_url, camera.id):
                         if not self.active_streams.get(camera.id, {}).get("is_running", False):
-                            logger.info(f"Stream processing stopped for camera {camera.id}")
+                            logger.info(f"🛑 Stream processing stopped for camera {camera.id}")
                             break
                         
                         # Extract DeGirum results
@@ -107,11 +125,22 @@ class CameraService:
                             self.active_streams[camera.id]["last_detections"] = detections
                             self.active_streams[camera.id]["last_tracks"] = tracks
                             self.active_streams[camera.id]["last_events"] = events
+                            self.active_streams[camera.id]["frame_count"] += 1
+                            
+                        # Log frame processing info periodically
+                        frame_count = self.active_streams[camera.id]["frame_count"]
+                        if frame_count % 30 == 0:  # Every 30 frames
+                            logger.info(f"📊 Camera {camera.id}: processed {frame_count} frames, {len(detections)} detections")
+                            
                 except Exception as stream_error:
-                    logger.error(f"Error in DeGirum stream processing for camera {camera.id}: {stream_error}")
+                    logger.error(f"💥 CRITICAL ERROR in DeGirum stream processing for camera {camera.id}: {stream_error}")
+                    logger.error(f"Error type: {type(stream_error).__name__}")
+                    import traceback
+                    logger.error(f"Full traceback: {traceback.format_exc()}")
                     if camera.id in self.active_streams:
                         self.active_streams[camera.id]["error_count"] += 1
                         self.active_streams[camera.id]["is_running"] = False
+                        self.active_streams[camera.id]["last_error"] = str(stream_error)
             
             # Submit the stream processing to thread pool
             future = self.executor.submit(process_stream)

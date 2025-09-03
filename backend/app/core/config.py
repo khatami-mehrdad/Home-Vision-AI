@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 24 * 8  # 8 days
     
     # Database
-    DATABASE_URL: str = "postgresql://user:password@localhost/homevision"
+    DATABASE_URL: str = "sqlite:///./homevision.db"
     
     # Redis
     REDIS_URL: str = "redis://localhost:6379"

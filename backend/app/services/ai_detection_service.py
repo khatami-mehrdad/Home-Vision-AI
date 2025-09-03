@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
 import logging
+import time
 from typing import List, Dict, Any, Optional, Tuple, Set
 from datetime import datetime, timedelta
 import json
@@ -216,7 +217,9 @@ class SmartNVRDetectionService:
             import cv2
             
             def frame_source(rtsp_url):
-                """Generator function to produce video frames from RTSP stream"""
+                """Generator function to produce video frames from RTSP stream with FPS control"""
+                import time
+                
                 stream = cv2.VideoCapture(rtsp_url)
                 if not stream.isOpened():
                     logger.error(f"❌ Failed to open RTSP stream: {rtsp_url}")
@@ -224,24 +227,71 @@ class SmartNVRDetectionService:
                     
                 logger.info(f"✅ Successfully opened RTSP stream: {rtsp_url}")
                 
+                # Get stream properties for debugging
+                fps = stream.get(cv2.CAP_PROP_FPS)
+                width = int(stream.get(cv2.CAP_PROP_FRAME_WIDTH))
+                height = int(stream.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                logger.info(f"📊 Stream properties: {width}x{height} @ {fps} FPS")
+                
+                # Target FPS for processing (should be reasonable for DeGirum)
+                target_fps = min(10, fps if fps > 0 else 10)  # Max 10 FPS for DeGirum processing
+                frame_interval = 1.0 / target_fps if target_fps > 0 else 0.1
+                logger.info(f"🎯 Target processing FPS: {target_fps} (interval: {frame_interval:.3f}s)")
+                
+                frame_count = 0
+                last_frame_time = time.time()
+                
                 try:
                     while True:
+                        current_time = time.time()
+                        
                         ret, frame = stream.read()
                         if not ret:
                             logger.warning("📺 End of video stream or failed to read frame")
                             break
-                        yield frame
+                            
+                        frame_count += 1
+                        
+                        # FPS control: only yield frames at target interval
+                        time_since_last = current_time - last_frame_time
+                        if time_since_last >= frame_interval:
+                            logger.debug(f"🎬 Yielding frame {frame_count} (interval: {time_since_last:.3f}s)")
+                            last_frame_time = current_time
+                            yield frame
+                        else:
+                            # Skip this frame to maintain target FPS
+                            logger.debug(f"⏭️ Skipping frame {frame_count} (too soon: {time_since_last:.3f}s)")
+                            
                 finally:
                     stream.release()
-                    logger.info("🔒 Released RTSP stream")
+                    logger.info(f"🔒 Released RTSP stream after {frame_count} frames")
             
             # Use predict_batch() with frame generator as recommended in DeGirum docs
             logger.info(f"🚀 Starting predict_batch with frame generator...")
             
+            processing_count = 0
+            last_processing_time = time.time()
+            processing_times = []
+            
             for inference_result in self.degirum_model.predict_batch(frame_source(rtsp_url)):
+                processing_start = time.time()
+                processing_count += 1
+                
+                # Calculate processing FPS
+                current_time = time.time()
+                if processing_count > 1:
+                    time_since_last = current_time - last_processing_time
+                    processing_times.append(time_since_last)
+                    if len(processing_times) > 10:
+                        processing_times.pop(0)  # Keep last 10 measurements
+                    avg_interval = sum(processing_times) / len(processing_times)
+                    current_fps = 1.0 / avg_interval if avg_interval > 0 else 0
+                    logger.info(f"📈 Processing frame {processing_count}, current FPS: {current_fps:.2f}")
+                
+                last_processing_time = current_time
+                
                 # Debug: Check what's inside inference_result
-                logger.info(f"DeGirum inference_result type: {type(inference_result)}")
-                logger.info(f"DeGirum inference_result attributes: {dir(inference_result)}")
+                logger.info(f"🔍 DeGirum result type: {type(inference_result)}")
                 
                 # Extract detection data from DetectionResults object
                 detections = []

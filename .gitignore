@@ -193,3 +193,4 @@ static/
 uploads/
 videos/
 images/
+*_logs.txt
