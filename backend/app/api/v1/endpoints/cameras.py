@@ -191,31 +191,57 @@ async def delete_camera(camera_id: int):
 @router.post("/{camera_id}/start")
 async def start_camera_stream(camera_id: int):
     """Start streaming from a camera"""
-    # Load real camera configuration
-    camera_config = load_camera_config()
-    camera_names = list(camera_config.keys())
-    
-    if camera_id <= len(camera_names):
-        camera_name = camera_names[camera_id - 1]
-        rtsp_url = camera_config[camera_name]
+    try:
+        logger.info(f"🚀 Starting camera stream for camera_id: {camera_id}")
         
-        # Create camera object with real RTSP URL
-        camera = Camera(
-            id=camera_id,
-            name=camera_name,
-            rtsp_url=rtsp_url,
-            frame_rate=10
-        )
+        # Load real camera configuration
+        camera_config = load_camera_config()
+        logger.info(f"📋 Loaded camera config: {camera_config}")
         
-        # Try to start the real camera stream
-        success = await camera_service.start_camera_stream(camera)
-        if success:
-            return {"message": f"Camera {camera_id} ({camera_name}) stream started successfully"}
+        camera_names = list(camera_config.keys())
+        logger.info(f"📷 Available cameras: {camera_names}")
+        
+        if camera_id <= len(camera_names):
+            camera_name = camera_names[camera_id - 1]
+            rtsp_url = camera_config[camera_name]
+            logger.info(f"🎯 Found camera: {camera_name} -> {rtsp_url}")
+            
+            # Create a simple camera object (not SQLAlchemy model)
+            class SimpleCamera:
+                def __init__(self, id, name, rtsp_url, frame_rate=10):
+                    self.id = id
+                    self.name = name
+                    self.rtsp_url = rtsp_url
+                    self.frame_rate = frame_rate
+            
+            camera = SimpleCamera(
+                id=camera_id,
+                name=camera_name,
+                rtsp_url=rtsp_url,
+                frame_rate=10
+            )
+            
+            logger.info(f"🔧 Created camera object: {camera.name} (ID: {camera.id})")
+            
+            # Try to start the real camera stream
+            success = await camera_service.start_camera_stream(camera)
+            if success:
+                logger.info(f"✅ Successfully started camera {camera_id} stream")
+                return {"message": f"Camera {camera_id} ({camera_name}) stream started successfully"}
+            else:
+                logger.error(f"❌ Failed to start camera {camera_id} stream")
+                raise HTTPException(status_code=500, detail="Failed to start camera stream")
         else:
-            raise HTTPException(status_code=500, detail="Failed to start camera stream")
-    else:
-        # For demo purposes, simulate success
-        return {"message": f"Camera {camera_id} stream started successfully (demo mode)"}
+            logger.warning(f"⚠️ Camera {camera_id} not found in config, using demo mode")
+            # For demo purposes, simulate success
+            return {"message": f"Camera {camera_id} stream started successfully (demo mode)"}
+            
+    except Exception as e:
+        logger.error(f"💥 Exception in start_camera_stream: {e}")
+        logger.error(f"Exception type: {type(e).__name__}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Failed to start camera stream: {str(e)}")
 
 @router.post("/{camera_id}/stop")
 async def stop_camera_stream(camera_id: int):
@@ -268,6 +294,21 @@ async def get_camera_status(camera_id: int):
 async def get_all_camera_statuses():
     """Get status for all active cameras"""
     return camera_service.get_all_camera_statuses()
+
+@router.get("/debug/test-degirum")
+async def test_degirum():
+    """Test DeGirum loading directly"""
+    try:
+        import degirum as dg
+        import degirum_tools
+        token = degirum_tools.get_token()
+        return {
+            "status": "success", 
+            "message": "DeGirum is available",
+            "token_preview": token[:10] + "..." if token else "No token"
+        }
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
 
 @router.get("/{camera_id}/detections")
 async def get_camera_detections(camera_id: int):

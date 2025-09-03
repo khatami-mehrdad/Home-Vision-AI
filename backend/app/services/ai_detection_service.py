@@ -39,6 +39,13 @@ class SmartNVRDetectionService:
     def _initialize_degirum_model(self):
         """Initialize DeGirum AI model for video stream processing"""
         try:
+            # Use lazy initialization - only load when actually needed
+            logger.info("🔄 DeGirum will be loaded when first camera stream starts")
+            self.degirum_model = None
+            self.degirum_tools = None
+            self._degirum_initialized = False
+            return
+            
             import degirum as dg
             import degirum_tools
             
@@ -147,18 +154,91 @@ class SmartNVRDetectionService:
             logger.error(f"Failed to create DeGirum stream processor: {e}")
             return None
     
+    def _lazy_load_degirum(self):
+        """Lazy load DeGirum model and tools when first needed"""
+        if self._degirum_initialized:
+            logger.info("🔄 DeGirum already initialized, skipping")
+            return
+            
+        try:
+            logger.info("🔄 Starting DeGirum lazy loading...")
+            
+            logger.info("📦 Importing degirum modules...")
+            import degirum as dg
+            import degirum_tools
+            logger.info("✅ DeGirum modules imported successfully")
+            
+            # Get DeGirum token
+            logger.info("🔑 Getting DeGirum token...")
+            your_token = degirum_tools.get_token()
+            logger.info(f"✅ Token obtained: {your_token[:10]}...")
+            
+            # Load YOLOv8 model for object detection
+            logger.info("🤖 Loading DeGirum model...")
+            self.degirum_model = dg.load_model(
+                model_name="yolov8n_relu6_coco--640x640_quant_n2x_orca1_1",
+                inference_host_address="@cloud",
+                zoo_url="degirum/public", 
+                token=your_token,
+            )
+            logger.info("✅ DeGirum model loaded successfully")
+            
+            # Store degirum_tools for stream processing
+            self.degirum_tools = degirum_tools
+            self._degirum_initialized = True
+            
+            logger.info("🎉 DeGirum initialization completed successfully!")
+            
+        except Exception as e:
+            import traceback
+            logger.error(f"❌ Failed to load DeGirum: {e}")
+            logger.error(f"❌ Exception type: {type(e).__name__}")
+            logger.error(f"❌ Traceback: {traceback.format_exc()}")
+            self.degirum_model = None
+            self.degirum_tools = None
+            self._degirum_initialized = False
+
     def process_degirum_stream(self, rtsp_url: str, camera_id: int):
         """
         Process DeGirum video stream directly from RTSP URL
         Based on DeGirum's predict_stream example
         """
+        # Lazy load DeGirum if not already loaded
+        if not self._degirum_initialized:
+            self._lazy_load_degirum()
+            
         if self.degirum_model is None or self.degirum_tools is None:
-            logger.error("DeGirum model or tools not available")
+            logger.error("DeGirum model or tools not available after lazy loading")
             return
         
         try:
-            # Use DeGirum's predict_stream with RTSP URL directly
-            for inference_result in self.degirum_tools.predict_stream(self.degirum_model, rtsp_url):
+            # Create frame generator from RTSP stream using OpenCV (as shown in DeGirum docs)
+            import cv2
+            
+            def frame_source(rtsp_url):
+                """Generator function to produce video frames from RTSP stream"""
+                stream = cv2.VideoCapture(rtsp_url)
+                if not stream.isOpened():
+                    logger.error(f"❌ Failed to open RTSP stream: {rtsp_url}")
+                    return
+                    
+                logger.info(f"✅ Successfully opened RTSP stream: {rtsp_url}")
+                
+                try:
+                    while True:
+                        ret, frame = stream.read()
+                        if not ret:
+                            logger.warning("📺 End of video stream or failed to read frame")
+                            break
+                        yield frame
+                finally:
+                    stream.release()
+                    logger.info("🔒 Released RTSP stream")
+            
+            # Use predict_batch() with frame generator as recommended in DeGirum docs
+            logger.info(f"🚀 Starting predict_batch with frame generator...")
+            
+            for inference_result in self.degirum_model.predict_batch(frame_source(rtsp_url)):
                 # Debug: Check what's inside inference_result
                 logger.info(f"DeGirum inference_result type: {type(inference_result)}")
                 logger.info(f"DeGirum inference_result attributes: {dir(inference_result)}")
