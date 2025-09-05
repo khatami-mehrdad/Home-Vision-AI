@@ -34,7 +34,7 @@ export default function WebRtcPlayer({
   // metadata
 
   const wsURL = useMemo(() => {
-    return `${baseUrl.replace(/^http/, "ws")}live/webrtc/api/ws?src=${camera}`;
+    return `${baseUrl.replace(/^http/, "ws")}api/v1/live/webrtc/api/ws?src=${camera}`;
   }, [camera]);
 
   // camera states

@@ -1,9 +1,10 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 import uvicorn
 import asyncio
 import logging
+import websockets
 
 from app.api.v1.api import api_router
 from app.core.config import settings
@@ -31,6 +32,148 @@ app.include_router(api_router, prefix=settings.API_V1_STR)
 
 # Mount static files for video storage
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+# WebSocket endpoints for go2rtc WebRTC signaling
+@app.websocket("/api/v1/live/webrtc/api/ws")
+async def websocket_proxy_webrtc(websocket: WebSocket):
+    """Proxy WebSocket connections to go2rtc for WebRTC streaming"""
+    try:
+        await websocket.accept()
+        
+        # Get the src parameter from query string
+        src = websocket.query_params.get("src", "my_camera")
+        
+        # Connect to go2rtc WebSocket
+        go2rtc_ws_url = f"ws://localhost:1984/api/ws?src={src}"
+        
+        async with websockets.connect(go2rtc_ws_url) as go2rtc_ws:
+            # Create bidirectional proxy
+            async def proxy_to_go2rtc():
+                try:
+                    while True:
+                        message = await websocket.receive_text()
+                        await go2rtc_ws.send(message)
+                except Exception:
+                    pass
+            
+            async def proxy_from_go2rtc():
+                try:
+                    async for message in go2rtc_ws:
+                        await websocket.send_text(message)
+                except Exception:
+                    pass
+            
+            # Run both proxy directions concurrently
+            await asyncio.gather(
+                proxy_to_go2rtc(),
+                proxy_from_go2rtc(),
+                return_exceptions=True
+            )
+    
+    except Exception as e:
+        print(f"WebSocket WebRTC error: {e}")
+        try:
+            await websocket.send_text(f'{{"error": "WebSocket proxy failed: {str(e)}"}}')
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
+
+@app.websocket("/api/v1/live/mse/api/ws")
+async def websocket_proxy_mse(websocket: WebSocket):
+    """Proxy WebSocket connections to go2rtc for MSE streaming"""
+    try:
+        await websocket.accept()
+        
+        # Get the src parameter from query string
+        src = websocket.query_params.get("src", "my_camera")
+        
+        # Connect to go2rtc WebSocket
+        go2rtc_ws_url = f"ws://localhost:1984/api/ws?src={src}"
+        
+        async with websockets.connect(go2rtc_ws_url) as go2rtc_ws:
+            # Create bidirectional proxy
+            async def proxy_to_go2rtc():
+                try:
+                    while True:
+                        message = await websocket.receive_text()
+                        await go2rtc_ws.send(message)
+                except Exception:
+                    pass
+            
+            async def proxy_from_go2rtc():
+                try:
+                    async for message in go2rtc_ws:
+                        await websocket.send_text(message)
+                except Exception:
+                    pass
+            
+            # Run both proxy directions concurrently
+            await asyncio.gather(
+                proxy_to_go2rtc(),
+                proxy_from_go2rtc(),
+                return_exceptions=True
+            )
+    
+    except Exception as e:
+        print(f"WebSocket MSE error: {e}")
+        try:
+            await websocket.send_text(f'{{"error": "WebSocket proxy failed: {str(e)}"}}')
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
+
+@app.websocket("/api/v1/ws")
+async def websocket_proxy_general(websocket: WebSocket):
+    """General WebSocket proxy to go2rtc"""
+    try:
+        await websocket.accept()
+        
+        # Connect to go2rtc WebSocket
+        go2rtc_ws_url = "ws://localhost:1984/api/ws"
+        
+        async with websockets.connect(go2rtc_ws_url) as go2rtc_ws:
+            # Create bidirectional proxy
+            async def proxy_to_go2rtc():
+                try:
+                    while True:
+                        message = await websocket.receive_text()
+                        await go2rtc_ws.send(message)
+                except Exception:
+                    pass
+            
+            async def proxy_from_go2rtc():
+                try:
+                    async for message in go2rtc_ws:
+                        await websocket.send_text(message)
+                except Exception:
+                    pass
+            
+            # Run both proxy directions concurrently
+            await asyncio.gather(
+                proxy_to_go2rtc(),
+                proxy_from_go2rtc(),
+                return_exceptions=True
+            )
+    
+    except Exception as e:
+        print(f"WebSocket general error: {e}")
+        try:
+            await websocket.send_text(f'{{"error": "WebSocket proxy failed: {str(e)}"}}')
+        except:
+            pass
+    finally:
+        try:
+            await websocket.close()
+        except:
+            pass
 
 @app.on_event("startup")
 async def startup_event():

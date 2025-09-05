@@ -2,6 +2,7 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 import App from "./App.tsx";
 import TestApp from "./TestApp.tsx";
+import TestCameraApp from "./TestCameraApp.tsx";
 import "./index.css";
 import "@/utils/i18n";
 import "react-i18next";
@@ -73,13 +74,25 @@ class ErrorBoundary extends React.Component<any, any> {
 console.log('Home Vision AI Frigate UI starting...');
 console.log('Window baseUrl:', window.baseUrl);
 
-// Temporarily use TestApp to debug the issue
-const USE_TEST_APP = false;
+// Test modes: 0=Full App, 1=TestApp (API test), 2=TestCameraApp (Camera test)
+const TEST_MODE = 0;
+
+// Determine which app to render based on TEST_MODE
+const getAppComponent = () => {
+  switch (TEST_MODE) {
+    case 1:
+      return <TestApp />;
+    case 2:
+      return <TestCameraApp />;
+    default:
+      return <App />;
+  }
+};
 
 ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      {USE_TEST_APP ? <TestApp /> : <App />}
+      {getAppComponent()}
     </ErrorBoundary>
   </React.StrictMode>,
 );

@@ -15,6 +15,13 @@ export default defineConfig({
     proxy: {
       "/api": {
         target: `http://${proxyHost}`,
+        rewrite: (path) => {
+          // Only rewrite if it doesn't already start with /api/v1
+          if (path.startsWith('/api/v1/')) {
+            return path; // Don't rewrite, already has v1
+          }
+          return path.replace(/^\/api/, "/api/v1");
+        },
         ws: true,
       },
       "/vod": {
@@ -34,10 +41,6 @@ export default defineConfig({
         target: `ws://${proxyHost}`,
         changeOrigin: true,
         ws: true,
-      },
-      "/api/my_camera": {
-        target: `http://${proxyHost}`,
-        rewrite: (path) => path.replace(/^\/api\/my_camera/, "/api/v1/my_camera"),
       },
     },
   },

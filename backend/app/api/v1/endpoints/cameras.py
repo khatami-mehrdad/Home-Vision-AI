@@ -11,6 +11,11 @@ import logging
 
 from app.models.camera import Camera
 from app.services.camera_service import camera_service
+# Import simple camera service for fallback
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+from simple_camera_service import simple_camera_service
 from app.schemas.camera import CameraCreate, CameraUpdate, CameraResponse
 from app.database import get_db
 
@@ -223,7 +228,16 @@ async def start_camera_stream(camera_id: int):
             
             logger.info(f"🔧 Created camera object: {camera.name} (ID: {camera.id})")
             
-            # Try to start the real camera stream
+            # Try simple camera service first (bypassing AI detection)
+            logger.info(f"🔄 Trying simple camera service (no AI detection)...")
+            simple_success = await simple_camera_service.start_camera_stream(camera)
+            
+            if simple_success:
+                logger.info(f"✅ Successfully started simple camera {camera_id} stream")
+                return {"message": f"Camera {camera_id} ({camera_name}) stream started successfully (simple mode)"}
+            
+            # Fallback to original service if needed
+            logger.info(f"🔄 Falling back to original camera service...")
             success = await camera_service.start_camera_stream(camera)
             if success:
                 logger.info(f"✅ Successfully started camera {camera_id} stream")
@@ -255,21 +269,100 @@ async def stop_camera_stream(camera_id: int):
 
 @router.get("/{camera_id}/frame")
 async def get_camera_frame(camera_id: int):
-    """Get the latest frame from a camera with DeGirum AI overlays"""
-    # Try to get DeGirum processed frame from camera service
-    frame_bytes = camera_service.get_latest_frame(camera_id)
+    """Get the latest frame from a camera (simple mode without AI)"""
+    import cv2  # Import cv2 at the top to avoid scope issues
+    frame_bytes = None
     
+    # Use simple camera service (no AI detection) consistently
+    frame = simple_camera_service.get_latest_frame(camera_id)
+    if frame is not None:
+        logger.debug(f"✅ Got frame from simple camera service for camera {camera_id}")
+        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+        if ret:
+            frame_bytes = buffer.tobytes()
+        else:
+            logger.error(f"❌ Failed to encode frame for camera {camera_id}")
+    else:
+        logger.warning(f"⚠️  No frame available from simple camera service for camera {camera_id}")
+    
+    # Note: DeGirum service fallback removed to prevent inconsistent AI/non-AI switching
+    
+    # Last resort: direct RTSP capture
     if frame_bytes is None:
-        logger.warning(f"No DeGirum frame available for camera {camera_id}, returning test frame")
-        # Return a test frame if no real frame is available
+        logger.info(f"No cached frame for camera {camera_id}, trying direct RTSP capture...")
+        
+        # Load camera config to get RTSP URL
+        config = load_camera_config()
+        rtsp_url = None
+        
+        for name, url in config.items():
+            if name == "My Camera":  # Assuming camera_id 1 maps to "My Camera"
+                rtsp_url = url
+                break
+        
+        if rtsp_url:
+            try:
+                cap = cv2.VideoCapture(rtsp_url)
+                
+                if cap.isOpened():
+                    ret, frame = cap.read()
+                    cap.release()
+                    
+                    if ret and frame is not None:
+                        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                        if ret:
+                            frame_bytes = buffer.tobytes()
+                            logger.debug(f"Captured direct RTSP frame for camera {camera_id}")
+                
+            except Exception as e:
+                logger.error(f"Failed to capture direct RTSP frame: {e}")
+    
+    # Final fallback: test frame
+    if frame_bytes is None:
+        logger.warning(f"No frame available for camera {camera_id}, returning test frame")
         test_frame = create_test_frame()
         ret, buffer = cv2.imencode('.jpg', test_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
         if ret:
             frame_bytes = buffer.tobytes()
         else:
             raise HTTPException(status_code=404, detail="Failed to create test frame")
+    
+    return StreamingResponse(
+        io.BytesIO(frame_bytes),
+        media_type="image/jpeg",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
+
+@router.get("/{camera_id}/frame/ai")
+async def get_camera_frame_with_ai(camera_id: int):
+    """Get the latest frame from a camera WITH AI detection and bounding boxes"""
+    import cv2
+    frame_bytes = None
+    
+    # Try DeGirum AI service first
+    frame_bytes = camera_service.get_latest_frame(camera_id)
+    if frame_bytes:
+        logger.debug(f"✅ Got AI-processed frame from DeGirum service for camera {camera_id}")
     else:
-        logger.debug(f"Serving DeGirum processed frame for camera {camera_id}, size: {len(frame_bytes)} bytes")
+        logger.warning(f"⚠️  No AI-processed frame available for camera {camera_id}")
+        
+        # Fallback: get simple frame and add "AI Unavailable" overlay
+        frame = simple_camera_service.get_latest_frame(camera_id)
+        if frame is not None:
+            # Add text overlay indicating AI is unavailable
+            cv2.putText(frame, "AI Detection Unavailable", (10, 30), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+            if ret:
+                frame_bytes = buffer.tobytes()
+    
+    if frame_bytes is None:
+        logger.error(f"❌ No frame available for camera {camera_id}")
+        raise HTTPException(status_code=404, detail="No frame available")
     
     return StreamingResponse(
         io.BytesIO(frame_bytes),
@@ -290,10 +383,44 @@ async def get_camera_status(camera_id: int):
         **status
     }
 
+@router.get("/{camera_id}/stream")
+async def stream_camera_mjpeg(camera_id: int):
+    """Stream camera as MJPEG for live viewing"""
+    import cv2
+    import asyncio
+    
+    async def generate_mjpeg_stream():
+        while True:
+            try:
+                # Get latest frame from simple camera service
+                frame = simple_camera_service.get_latest_frame(camera_id)
+                if frame is not None:
+                    ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    if ret:
+                        frame_bytes = buffer.tobytes()
+                        yield (b'--frame\r\n'
+                               b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+                    
+                await asyncio.sleep(1/10)  # 10 FPS
+            except Exception as e:
+                logger.error(f"Error in MJPEG stream: {e}")
+                break
+    
+    return StreamingResponse(
+        generate_mjpeg_stream(),
+        media_type="multipart/x-mixed-replace; boundary=frame",
+        headers={
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache",
+            "Expires": "0"
+        }
+    )
+
 @router.get("/status/all")
 async def get_all_camera_statuses():
     """Get status for all active cameras"""
     return camera_service.get_all_camera_statuses()
+
 
 @router.get("/debug/test-degirum")
 async def test_degirum():

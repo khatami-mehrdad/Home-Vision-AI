@@ -56,7 +56,7 @@ export default function CameraImage({
       return;
     }
 
-    const newSrc = `${apiHost}api/${name}/latest.webp?height=${requestHeight}${
+    const newSrc = `${apiHost}api/v1/${name}/latest.webp?height=${requestHeight}${
       searchParams ? `&${searchParams}` : ""
     }`;
 

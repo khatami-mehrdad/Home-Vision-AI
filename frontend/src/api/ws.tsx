@@ -29,7 +29,7 @@ type WsState = {
 type useValueReturn = [WsState, (update: Update) => void];
 
 function useValue(): useValueReturn {
-  const wsUrl = `${baseUrl.replace(/^http/, "ws")}ws`;
+  const wsUrl = `${baseUrl.replace(/^http/, "ws")}api/v1/ws`;
 
   // main state
 

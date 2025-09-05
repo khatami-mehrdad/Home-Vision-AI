@@ -6,7 +6,7 @@ import { isDesktop } from "react-device-detect";
 import { FaCompactDisc, FaVideo } from "react-icons/fa";
 import { IoSearch } from "react-icons/io5";
 import { LuConstruction } from "react-icons/lu";
-import { MdCategory, MdVideoLibrary } from "react-icons/md";
+import { MdCategory, MdVideoLibrary, MdBugReport } from "react-icons/md";
 import { TbFaceId } from "react-icons/tb";
 import useSWR from "swr";
 
@@ -17,6 +17,7 @@ export const ID_EXPORT = 4;
 export const ID_PLAYGROUND = 5;
 export const ID_FACE_LIBRARY = 6;
 export const ID_CLASSIFICATION = 7;
+export const ID_DIAGNOSTICS = 8;
 
 export default function useNavigation(
   variant: "primary" | "secondary" = "primary",
@@ -79,6 +80,14 @@ export default function useNavigation(
           title: "menu.classification",
           url: "/classification",
           enabled: isDesktop,
+        },
+        {
+          id: ID_DIAGNOSTICS,
+          variant,
+          icon: MdBugReport,
+          title: "menu.diagnostics",
+          url: "/diagnostics",
+          enabled: true,
         },
       ] as NavData[],
     [config?.face_recognition?.enabled, variant],

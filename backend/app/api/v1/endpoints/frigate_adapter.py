@@ -123,7 +123,8 @@ async def get_frigate_config():
                 "input_tensor": "normalized_input_image_tensor",
                 "input_pixel_format": "rgb",
                 "path": "/cpu_model.tflite",
-                "labelmap_path": "/labelmap.txt"
+                "labelmap_path": "/labelmap.txt",
+                "attributes_map": {}  # Required by frontend iconUtil
             },
             "detectors": {
                 "cpu": {
@@ -154,6 +155,7 @@ async def get_frigate_config():
             
             frigate_config["cameras"][camera_stream_name] = {
                 "enabled": True,
+                "enabled_in_config": True,  # Required by Live tab frontend
                 "ffmpeg": {
                     "inputs": [
                         {
@@ -170,6 +172,7 @@ async def get_frigate_config():
                 },
                 "record": {
                     "enabled": True,
+                    "enabled_in_config": True,  # Required by LiveCameraView
                     "retain": {
                         "days": 7,
                         "mode": "motion"
@@ -188,15 +191,32 @@ async def get_frigate_config():
                 },
                 "zones": {},
                 "live": {
-                    "stream_name": camera_name.lower().replace(" ", "_"),
+                    "stream_name": camera_stream_name,
                     "height": 720,
-                    "quality": 8
+                    "quality": 8,
+                    "streams": {
+                        camera_stream_name: camera_stream_name
+                    }
                 },
                 "ui": {
                     "order": idx,
                     "dashboard": True
                 },
-                "name": camera_stream_name
+                "name": camera_stream_name,
+                "audio": {
+                    "enabled": False,
+                    "enabled_in_config": False  # Required by LiveCameraView
+                },
+                "onvif": {
+                    "autotracking": {
+                        "enabled": False,
+                        "enabled_in_config": False  # Required by LiveCameraView
+                    }
+                },
+                "audio_transcription": {
+                    "enabled": False,
+                    "enabled_in_config": False  # Required by LiveCameraView
+                }
             }
             
             # Add to go2rtc streams
@@ -255,10 +275,12 @@ async def get_frigate_stats():
         }
         
         # Add camera stats
-        for camera in cameras:
-            camera_name = camera.get("name", "unknown")
+        for idx, camera in enumerate(cameras):
+            camera_name = camera.get("name", f"camera_{idx}")
+            camera_stream_name = camera_name.lower().replace(" ", "_")
+            
             # Mock camera being online and processing
-            stats["cameras"][camera_name] = {
+            stats["cameras"][camera_stream_name] = {
                 "camera_fps": 5.0,
                 "capture_pid": 1234,
                 "detection_fps": 2.5,
@@ -266,7 +288,8 @@ async def get_frigate_stats():
                 "process_fps": 5.0,
                 "skipped_fps": 0.0,
                 "detection_enabled": True,
-                "detection_frame": current_time
+                "detection_frame": current_time,
+                "enabled": True  # Add the enabled field that the frontend expects
             }
         
         return stats
@@ -373,7 +396,7 @@ async def get_camera_latest_jpg(camera: str):
 @router.get("/{camera}/latest.webp")
 async def get_camera_latest_webp(camera: str, height: int = 360):
     """
-    Get latest camera image (WebP format) with AI detection overlays
+    Get latest camera image (WebP format) directly from RTSP stream
     This is the main endpoint that Frigate UI uses for camera images
     """
     from fastapi.responses import Response
@@ -383,145 +406,83 @@ async def get_camera_latest_webp(camera: str, height: int = 360):
     from PIL import Image, ImageDraw, ImageFont
     import time
     import logging
+    import json
+    import os
     
     logger = logging.getLogger(__name__)
     
     try:
-        # Create a test frame that simulates a camera feed
-        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        # Load camera configuration
+        config_path = "/home/mehrdad/wa/Home-Vision-AI/camera_config.json"
+        if not os.path.exists(config_path):
+            raise Exception(f"Camera config not found at {config_path}")
         
-        # Add some test content to make it look like a real camera feed
-        cv2.rectangle(frame, (50, 50), (590, 430), (100, 100, 100), 2)
-        cv2.putText(frame, f"Camera: {camera}", (60, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(frame, f"Resolution: {height}px", (60, 110), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-        cv2.putText(frame, f"Time: {time.strftime('%H:%M:%S')}", (60, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        with open(config_path, 'r') as f:
+            camera_config = json.load(f)
         
-        # Try to use DeGirum AI detection if available
-        try:
-            from app.services.ai_detection_service import ai_detection_service
-            
-            # Check if DeGirum is available and properly initialized
-            if (hasattr(ai_detection_service, 'degirum_model') and 
-                ai_detection_service.degirum_model is not None and
-                hasattr(ai_detection_service, 'is_initialized') and 
-                ai_detection_service.is_initialized):
-                
-                # Use DeGirum for AI detection
-                detection_result = ai_detection_service.process_frame(frame, camera_id=1)
-                
-                if detection_result and "processed_frame" in detection_result:
-                    processed_frame = detection_result["processed_frame"]
-                    detections = detection_result.get("detections", [])
-                    
-                    # Add AI status indicator
-                    cv2.putText(processed_frame, "AI Detection: ACTIVE", (60, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
-                    cv2.putText(processed_frame, f"Objects: {len(detections)}", (60, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-                    
-                    # Convert BGR to RGB for PIL
-                    frame_rgb = cv2.cvtColor(processed_frame, cv2.COLOR_BGR2RGB)
-                else:
-                    raise Exception("DeGirum processing failed")
-            else:
-                raise Exception("DeGirum model not available or not initialized")
-                
-        except Exception as e:
-            logger.warning(f"DeGirum AI detection not available: {e}")
-            
-            # Fallback: Create mock detections for demo
-            import random
-            
-            # Create dynamic detections that change over time
-            current_time = int(time.time())
-            random.seed(current_time // 5)  # Change every 5 seconds
-            
-            # Randomly generate 0-3 detections
-            num_detections = random.randint(0, 3)
-            mock_detections = []
-            
-            object_types = ["person", "car", "bicycle", "dog", "cat", "truck", "motorcycle"]
-            
-            for i in range(num_detections):
-                obj_type = random.choice(object_types)
-                confidence = random.uniform(0.7, 0.95)
-                
-                # Random bounding box position
-                x = random.randint(100, 500)
-                y = random.randint(150, 350)
-                w = random.randint(60, 150)
-                h = random.randint(60, 200)
-                
-                mock_detections.append({
-                    "object_type": obj_type,
-                    "confidence": confidence,
-                    "bounding_box": [x, y, w, h],
-                    "center": [x + w//2, y + h//2]
-                })
-            
-            # Draw mock detections
-            for detection in mock_detections:
-                bbox = detection["bounding_box"]
-                x, y, w, h = bbox
-                confidence = detection["confidence"]
-                obj_type = detection["object_type"]
-                
-                # Color code by object type
-                color_map = {
-                    "person": (0, 255, 0),      # Green
-                    "car": (255, 0, 0),         # Blue
-                    "truck": (255, 0, 0),       # Blue
-                    "motorcycle": (255, 0, 0),  # Blue
-                    "bicycle": (0, 255, 255),   # Yellow
-                    "dog": (255, 0, 255),       # Magenta
-                    "cat": (255, 0, 255),       # Magenta
-                }
-                
-                # Get color for object type, default to white
-                color = color_map.get(obj_type, (255, 255, 255))
-                
-                # Make color darker for low confidence
-                if confidence < 0.8:
-                    color = tuple(int(c * 0.7) for c in color)
-                
-                # Draw bounding box
-                cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-                
-                # Draw label with background
-                label = f"{obj_type}: {confidence:.2f}"
-                label_size = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2)[0]
-                cv2.rectangle(frame, (x, y - label_size[1] - 10), (x + label_size[0], y), color, -1)
-                cv2.putText(frame, label, (x, y - 5), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
-            
-            # Add AI status indicator
-            cv2.putText(frame, "AI Detection: DEMO MODE", (60, 380), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
-            cv2.putText(frame, f"Objects: {len(mock_detections)}", (60, 400), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-            
-            # Convert BGR to RGB for PIL
-            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # Find the camera configuration
+        camera_info = None
+        for cam in camera_config.get("cameras", []):
+            if cam.get("name", "").lower().replace(" ", "_") == camera:
+                camera_info = cam
+                break
+        
+        if not camera_info:
+            raise Exception(f"Camera {camera} not found in configuration")
+        
+        rtsp_url = camera_info.get("rtsp_url")
+        if not rtsp_url:
+            raise Exception(f"No RTSP URL configured for camera {camera}")
+        
+        logger.info(f"Connecting to RTSP stream for camera {camera}: {rtsp_url}")
+        
+        # Connect to RTSP stream
+        cap = cv2.VideoCapture(rtsp_url)
+        
+        if not cap.isOpened():
+            raise Exception(f"Failed to open RTSP stream: {rtsp_url}")
+        
+        # Set buffer size to reduce latency
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        
+        # Read a frame
+        ret, frame = cap.read()
+        cap.release()
+        
+        if not ret or frame is None:
+            raise Exception("Failed to read frame from RTSP stream")
+        
+        logger.info(f"Successfully captured frame from RTSP stream: {frame.shape}")
+        
+        # Add timestamp overlay
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        cv2.putText(frame, timestamp, (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+        cv2.putText(frame, f"Camera: {camera}", (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        cv2.putText(frame, "RTSP Stream: ACTIVE", (10, 90), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
+        
+        # Convert BGR to RGB for PIL
+        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         
         # Convert to PIL Image
         pil_image = Image.fromarray(frame_rgb)
         
         # Resize if needed
-        if height != 480:
-            pil_image = pil_image.resize((int(640 * height / 480), height), Image.Resampling.LANCZOS)
+        if height != frame.shape[0]:
+            # Calculate new width maintaining aspect ratio
+            aspect_ratio = frame.shape[1] / frame.shape[0]
+            new_width = int(height * aspect_ratio)
+            pil_image = pil_image.resize((new_width, height), Image.Resampling.LANCZOS)
         
         # Convert to WebP
         webp_buffer = io.BytesIO()
         pil_image.save(webp_buffer, format='WEBP', quality=85)
         webp_data = webp_buffer.getvalue()
         
-        # Count detections for logging
-        detection_count = 0
-        if 'detections' in locals():
-            detection_count = len(detections)
-        elif 'mock_detections' in locals():
-            detection_count = len(mock_detections)
-        
-        logger.info(f"Served AI-processed camera image for {camera} with {detection_count} detections")
+        logger.info(f"Served RTSP camera image for {camera}, WebP size: {len(webp_data)} bytes")
         return Response(content=webp_data, media_type="image/webp")
         
     except Exception as e:
-        logger.error(f"Error generating camera image for {camera}: {e}")
+        logger.error(f"Error capturing camera image for {camera}: {e}")
         
         # Fallback to placeholder image
         img = Image.new('RGB', (640, 480), color='black')
@@ -532,11 +493,23 @@ async def get_camera_latest_webp(camera: str, height: int = 360):
         except:
             font = None
         
-        text = f"Camera: {camera}\nHeight: {height}px\nAI Detection: ERROR\nTime: {time.strftime('%H:%M:%S')}"
-        draw.multiline_text((50, 200), text, fill='red', font=font, align='center')
+        # Add error message
+        error_text = f"RTSP Error: {str(e)[:50]}..."
+        if font:
+            draw.text((20, 20), error_text, fill='white', font=font)
+        else:
+            draw.text((20, 20), error_text, fill='white')
         
+        # Add timestamp
+        timestamp = time.strftime('%Y-%m-%d %H:%M:%S')
+        if font:
+            draw.text((20, 50), timestamp, fill='gray', font=font)
+        else:
+            draw.text((20, 50), timestamp, fill='gray')
+        
+        # Convert to WebP
         webp_buffer = io.BytesIO()
-        img.save(webp_buffer, format='WEBP', quality=80)
+        img.save(webp_buffer, format='WEBP', quality=85)
         webp_data = webp_buffer.getvalue()
         
         return Response(content=webp_data, media_type="image/webp")

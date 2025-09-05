@@ -81,7 +81,7 @@ function MSEPlayer({
   const msRef = useRef<MediaSource | null>(null);
 
   const wsURL = useMemo(() => {
-    return `${baseUrl.replace(/^http/, "ws")}live/mse/api/ws?src=${camera}`;
+    return `${baseUrl.replace(/^http/, "ws")}api/v1/live/mse/api/ws?src=${camera}`;
   }, [camera]);
 
   const handleLoadedMetadata = useCallback(() => {

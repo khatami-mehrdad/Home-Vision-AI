@@ -27,6 +27,7 @@ const FaceLibrary = lazy(() => import("@/pages/FaceLibrary"));
 const Classification = lazy(() => import("@/pages/ClassificationModel"));
 const Logs = lazy(() => import("@/pages/Logs"));
 const AccessDenied = lazy(() => import("@/pages/AccessDenied"));
+const Diagnostics = lazy(() => import("@/pages/Diagnostics"));
 
 function App() {
   const { data: config } = useSWR<FrigateConfig>("config", {
@@ -71,6 +72,7 @@ function DefaultAppView() {
               <Route path="/explore" element={<Explore />} />
               <Route path="/export" element={<Exports />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/diagnostics" element={<Diagnostics />} />
             </Route>
             <Route element={<ProtectedRoute requiredRoles={["admin"]} />}>
               <Route path="/system" element={<System />} />
