@@ -1,6 +1,10 @@
 api:
   listen: ":1984"
 
+rtsp:
+  listen: ":8554"
+  timeout: "30s"  # Increase RTSP timeout
+
 webrtc:
   listen: ":8555"
   candidates:
@@ -9,8 +13,10 @@ webrtc:
 
 streams:
   my_camera:
-    - rtsp://mehrdad:hafez21_M@192.168.1.32:554/stream1
-    - "ffmpeg:my_camera#audio=opus#video=h264#width=640#height=360"  # Transcode to 640x360 for lower bandwidth
+    # Primary RTSP source with enhanced stability
+    - rtsp://mehrdad:hafez21_M@192.168.1.32:554/stream1?timeout=30&buffer_size=2097152&rtsp_transport=tcp
+    # FFmpeg transcoding with better error handling
+    - "ffmpeg:my_camera#audio=opus#video=h264#width=640#height=360#reconnect=1#reconnect_delay_max=30#reconnect_streamed=1#fflags=+genpts+discardcorrupt"
 
 log:
   level: info

@@ -8,6 +8,7 @@ function LiveFeedDebugger() {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [apiTests, setApiTests] = useState<Record<string, any>>({});
   const [streamStatus, setStreamStatus] = useState<string>('Not started');
+  const [refreshTimestamp, setRefreshTimestamp] = useState(Date.now());
 
   const addLog = (message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -15,6 +16,15 @@ function LiveFeedDebugger() {
     console.log(logEntry);
     setLogs(prev => [...prev, logEntry]);
   };
+
+  // Auto-refresh frames every 2 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setRefreshTimestamp(Date.now());
+    }, 2000);
+
+    return () => clearInterval(interval);
+  }, []);
 
   // Test different API endpoints
   const testApiEndpoints = async () => {
@@ -140,7 +150,7 @@ function LiveFeedDebugger() {
     addLog('🖼️ Testing different image URL formats...');
     
     const urls = [
-      `${baseUrl}api/v1/cameras/1/frame`,
+      `${baseUrl}api/v1/cameras/1/frame?t=${Date.now()}`,
       `${baseUrl}api/v1/my_camera/latest.webp?height=360&t=${Date.now()}`,
       `${baseUrl}api/v1/My%20Camera/latest.webp?height=360&t=${Date.now()}`,
     ];
@@ -167,7 +177,7 @@ function LiveFeedDebugger() {
 
   const cameraName = "my_camera";
   const height = 360;
-  const imageUrl = `${baseUrl}api/v1/cameras/1/frame?t=${Date.now()}`;
+  const imageUrl = `${baseUrl}api/v1/cameras/1/frame?t=${refreshTimestamp}`;
   
   console.log('🔍 Debug - baseUrl:', baseUrl);
   console.log('🔍 Debug - imageUrl:', imageUrl);
@@ -198,6 +208,7 @@ function LiveFeedDebugger() {
           <h3>📸 Current Frame Test</h3>
           <p><strong>URL:</strong> {imageUrl}</p>
           <p><strong>Status:</strong> {imageLoaded ? '✅ Loaded' : imageError ? '❌ Error' : '⏳ Loading...'}</p>
+          <p><strong>🔄 Auto-refresh:</strong> Every 2 seconds (Last: {new Date(refreshTimestamp).toLocaleTimeString()})</p>
           {imageError && <p style={{ color: '#ff6b6b' }}><strong>Error:</strong> {imageError}</p>}
           
           <div style={{ border: '2px solid #333', padding: '10px', maxWidth: '400px', marginTop: '10px' }}>
@@ -227,12 +238,12 @@ function LiveFeedDebugger() {
         {/* AI Frame Comparison */}
         <div style={{ border: '1px solid #333', padding: '15px', borderRadius: '8px' }}>
           <h3>🤖 AI Frame Test</h3>
-          <p><strong>URL:</strong> {`${baseUrl}api/v1/cameras/1/frame/ai?t=${Date.now()}`}</p>
+          <p><strong>URL:</strong> {`${baseUrl}api/v1/cameras/1/frame/ai?t=${refreshTimestamp}`}</p>
           <p><strong>Note:</strong> This endpoint tries AI detection first, falls back to "AI Unavailable" overlay</p>
           
           <div style={{ border: '2px solid #333', padding: '10px', maxWidth: '400px', marginTop: '10px' }}>
             <img
-              src={`${baseUrl}api/v1/cameras/1/frame/ai?t=${Date.now()}`}
+              src={`${baseUrl}api/v1/cameras/1/frame/ai?t=${refreshTimestamp}`}
               alt="Camera feed with AI"
               style={{ 
                 maxWidth: '100%', 

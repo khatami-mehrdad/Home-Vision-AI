@@ -228,23 +228,28 @@ async def start_camera_stream(camera_id: int):
             
             logger.info(f"🔧 Created camera object: {camera.name} (ID: {camera.id})")
             
-            # Try simple camera service first (bypassing AI detection)
-            logger.info(f"🔄 Trying simple camera service (no AI detection)...")
-            simple_success = await simple_camera_service.start_camera_stream(camera)
+            # Use go2rtc for streaming (avoid direct RTSP connection conflicts)
+            logger.info(f"🔄 Using go2rtc for camera {camera_id} streaming...")
             
-            if simple_success:
-                logger.info(f"✅ Successfully started simple camera {camera_id} stream")
-                return {"message": f"Camera {camera_id} ({camera_name}) stream started successfully (simple mode)"}
-            
-            # Fallback to original service if needed
-            logger.info(f"🔄 Falling back to original camera service...")
-            success = await camera_service.start_camera_stream(camera)
-            if success:
-                logger.info(f"✅ Successfully started camera {camera_id} stream")
-                return {"message": f"Camera {camera_id} ({camera_name}) stream started successfully"}
-            else:
-                logger.error(f"❌ Failed to start camera {camera_id} stream")
-                raise HTTPException(status_code=500, detail="Failed to start camera stream")
+            # Check if go2rtc has the stream available
+            import httpx
+            try:
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(f"http://localhost:1984/api/streams", timeout=5)
+                    if response.status_code == 200:
+                        streams = response.json()
+                        if "my_camera" in streams:
+                            logger.info(f"✅ go2rtc stream 'my_camera' is available for camera {camera_id}")
+                            return {"message": f"Camera {camera_id} ({camera_name}) stream available via go2rtc"}
+                        else:
+                            logger.error(f"❌ go2rtc stream 'my_camera' not found")
+                            raise HTTPException(status_code=500, detail="Camera stream not available in go2rtc")
+                    else:
+                        logger.error(f"❌ go2rtc not responding: {response.status_code}")
+                        raise HTTPException(status_code=500, detail="go2rtc server not available")
+            except Exception as e:
+                logger.error(f"❌ Failed to check go2rtc: {e}")
+                raise HTTPException(status_code=500, detail=f"Failed to verify camera stream: {str(e)}")
         else:
             logger.warning(f"⚠️ Camera {camera_id} not found in config, using demo mode")
             # For demo purposes, simulate success
@@ -269,73 +274,74 @@ async def stop_camera_stream(camera_id: int):
 
 @router.get("/{camera_id}/frame")
 async def get_camera_frame(camera_id: int):
-    """Get the latest frame from a camera (simple mode without AI)"""
-    import cv2  # Import cv2 at the top to avoid scope issues
-    frame_bytes = None
+    """Get the latest frame from a camera via go2rtc with retry logic for better stability"""
+    import httpx
+    import cv2
+    import numpy as np
+    import asyncio
     
-    # Use simple camera service (no AI detection) consistently
-    frame = simple_camera_service.get_latest_frame(camera_id)
-    if frame is not None:
-        logger.debug(f"✅ Got frame from simple camera service for camera {camera_id}")
-        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-        if ret:
-            frame_bytes = buffer.tobytes()
-        else:
-            logger.error(f"❌ Failed to encode frame for camera {camera_id}")
+    # Retry configuration for better stability
+    max_retries = 2
+    retry_delay = 0.1  # 100ms between retries
+    
+    for attempt in range(max_retries + 1):
+        try:
+            # Use go2rtc to get a frame snapshot with optimized timeout
+            timeout_config = httpx.Timeout(
+                connect=2.0,  # 2s to connect
+                read=3.0,     # 3s to read response
+                write=1.0,    # 1s to write
+                pool=5.0      # 5s total
+            )
+            
+            async with httpx.AsyncClient(timeout=timeout_config) as client:
+                response = await client.get(f"http://localhost:1984/api/frame.jpeg?src=my_camera")
+                
+                if response.status_code == 200:
+                    logger.debug(f"✅ Got frame from go2rtc for camera {camera_id} (attempt {attempt + 1})")
+                    return StreamingResponse(
+                        io.BytesIO(response.content),
+                        media_type="image/jpeg",
+                        headers={
+                            "Cache-Control": "no-cache, no-store, must-revalidate",
+                            "Pragma": "no-cache",
+                            "Expires": "0"
+                        }
+                    )
+                else:
+                    logger.warning(f"⚠️ go2rtc frame request failed: {response.status_code} (attempt {attempt + 1})")
+        
+        except Exception as e:
+            logger.warning(f"⚠️ Error getting frame from go2rtc (attempt {attempt + 1}): {e}")
+        
+        # Wait before retry (except on last attempt)
+        if attempt < max_retries:
+            await asyncio.sleep(retry_delay)
+    
+    # All retries failed, create error frame
+    logger.error(f"❌ All {max_retries + 1} attempts failed for camera {camera_id}")
+    error_frame = np.zeros((360, 640, 3), dtype=np.uint8)
+    cv2.putText(error_frame, "Stream Temporarily", (170, 160), 
+               cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+    cv2.putText(error_frame, "Unavailable", (200, 200), 
+               cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2)
+    cv2.putText(error_frame, "Retrying...", (220, 240), 
+               cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 1)
+    
+    ret, buffer = cv2.imencode('.jpg', error_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
+    if ret:
+        frame_bytes = buffer.tobytes()
+        return StreamingResponse(
+            io.BytesIO(frame_bytes),
+            media_type="image/jpeg",
+            headers={
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache",
+                "Expires": "0"
+            }
+        )
     else:
-        logger.warning(f"⚠️  No frame available from simple camera service for camera {camera_id}")
-    
-    # Note: DeGirum service fallback removed to prevent inconsistent AI/non-AI switching
-    
-    # Last resort: direct RTSP capture
-    if frame_bytes is None:
-        logger.info(f"No cached frame for camera {camera_id}, trying direct RTSP capture...")
-        
-        # Load camera config to get RTSP URL
-        config = load_camera_config()
-        rtsp_url = None
-        
-        for name, url in config.items():
-            if name == "My Camera":  # Assuming camera_id 1 maps to "My Camera"
-                rtsp_url = url
-                break
-        
-        if rtsp_url:
-            try:
-                cap = cv2.VideoCapture(rtsp_url)
-                
-                if cap.isOpened():
-                    ret, frame = cap.read()
-                    cap.release()
-                    
-                    if ret and frame is not None:
-                        ret, buffer = cv2.imencode('.jpg', frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-                        if ret:
-                            frame_bytes = buffer.tobytes()
-                            logger.debug(f"Captured direct RTSP frame for camera {camera_id}")
-                
-            except Exception as e:
-                logger.error(f"Failed to capture direct RTSP frame: {e}")
-    
-    # Final fallback: test frame
-    if frame_bytes is None:
-        logger.warning(f"No frame available for camera {camera_id}, returning test frame")
-        test_frame = create_test_frame()
-        ret, buffer = cv2.imencode('.jpg', test_frame, [cv2.IMWRITE_JPEG_QUALITY, 80])
-        if ret:
-            frame_bytes = buffer.tobytes()
-        else:
-            raise HTTPException(status_code=404, detail="Failed to create test frame")
-    
-    return StreamingResponse(
-        io.BytesIO(frame_bytes),
-        media_type="image/jpeg",
-        headers={
-            "Cache-Control": "no-cache, no-store, must-revalidate",
-            "Pragma": "no-cache",
-            "Expires": "0"
-        }
-    )
+        raise HTTPException(status_code=500, detail="Failed to create error frame")
 
 @router.get("/{camera_id}/frame/ai")
 async def get_camera_frame_with_ai(camera_id: int):

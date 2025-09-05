@@ -163,7 +163,7 @@ export default function LivePlayer({
       }
     }
 
-    return 30000;
+    return 5000;  // Update every 5 seconds for better dashboard responsiveness
   }, [
     autoLive,
     showStillWithoutActivity,

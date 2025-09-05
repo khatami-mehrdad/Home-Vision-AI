@@ -462,7 +462,7 @@ export default function LiveCameraView({
                 className={`flex items-center gap-2.5 rounded-lg`}
                 aria-label={t("label.back", { ns: "common" })}
                 size="sm"
-                onClick={() => navigate(-1)}
+                onClick={() => navigate("/")}
               >
                 <IoMdArrowRoundBack className="size-5 text-secondary-foreground" />
                 {isDesktop && (
@@ -508,7 +508,7 @@ export default function LiveCameraView({
                   className="bg-gray-500 bg-gradient-to-br from-gray-400 to-gray-500 text-primary"
                   aria-label={t("label.back", { ns: "common" })}
                   size="sm"
-                  onClick={() => navigate(-1)}
+                  onClick={() => navigate("/")}
                 >
                   <IoMdArrowRoundBack className="size-5 text-secondary-foreground" />
                   {isDesktop && (
